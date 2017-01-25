@@ -1,6 +1,21 @@
-# froTools
+```
+///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////
 
-Current version : **3.2.5**
+  ####                  ######                  ####
+ ##                       ##                      ##
+ ##     ##  ##   ####     ##     ####    ####     ##     #####
+ ##     ## ###  ##  ##    ##    ##  ##  ##  ##    ##    ##
+######  ###     ##  ##    ##    ##  ##  ##  ##    ##    ##
+ ##     ##      ##  ##    ##    ##  ##  ##  ##    ##     ####
+ ##     ##      ##  ##    ##    ##  ##  ##  ##    ##        ##
+ ##     ##      ##  ##    ##    ##  ##  ##  ##    ##        ##
+ ##     ##       ####     ##     ####    ####   ######  #####
+///////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////
+```
+
+Current version : **3.3**
 
 The ***froTools*** is a toolset for **Autodesk Maya** to speed up your modeling workflow. This game content oriented script allow you a quicker access to the common tools that you use in Maya when you do polygonal modeling. It also provide a lot of new tools to make some task more easy to perform.
 
@@ -35,3 +50,9 @@ eval("froTools3");
 Documentation can be found on the following page :
 
 http://www.froyok.fr/blog/2012-12-frotools-3-2-new-enhanced-ui-and-tools
+
+
+# Contact
+For additional contacts and requests you can reach out via my website or Twitter :
+ * http://www.froyok.fr
+ * https://twitter.com/Froyok
