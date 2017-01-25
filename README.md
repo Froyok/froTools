@@ -33,6 +33,9 @@ This script has been tested and works properly with :
  * Maya 2012
  * Maya 2013
  * Maya 2014
+ * Maya 2015
+ * Maya 2016
+ * Maya 2017
 
 # How to Launch ?
 Call the command below in the mel command line for the first time. You can use the “Make Shelf Button” to make a shelf button in your current shelf.
