@@ -1,0 +1,5963 @@
+/*
+//	FROYOK Toolsel (froTools3.mel)
+//	http://www.froyok.fr - Froyok@yahoo.fr
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  ####                  ######                  ####          
+ ##                       ##                      ##          
+ ##     ##  ##   ####     ##     ####    ####     ##     #####
+ ##     ## ###  ##  ##    ##    ##  ##  ##  ##    ##    ##    
+######  ###     ##  ##    ##    ##  ##  ##  ##    ##    ##    
+ ##     ##      ##  ##    ##    ##  ##  ##  ##    ##     #### 
+ ##     ##      ##  ##    ##    ##  ##  ##  ##    ##        ##
+ ##     ##      ##  ##    ##    ##  ##  ##  ##    ##        ##
+ ##     ##       ####     ##     ####    ####   ######  ##### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+
+//froTools 3.2.5
+-Added a checkbox to disable the CTRL+d manipulator change
+-Updated the UV window (minor changes such as better button names)
+-Updated the "duplicate faces" for Maya 2013 : removed the offset change
+-Updated BestPlan and BestOrtho fucntion : now show the UV manipulator
+-Updated the "Export path" : now single field and path is saved inside Maya variables.
+-Updated FBX default option : "connection" is now disabled by default (for UDK export compatibility)
+-Updated the "UV Center" : selection converted when called from UI window.
+-Updated the CTRL+d duplicate : keep the current manipulator
+-Fixed "froWindow3" killing error (when preferences weren't existing)
+-Fixed the missing size field for the Snapshot UV function.
+-Fixed the crash with the Photoshop path (removed the exe file filter)
+-Fixed the annoying message "Warning: Some items cannot be moved in the 3D view.".
+
+//froTools 3.2
+-New icons for UV tools/Transform
+-New UV editor window (new icons, new organization, auto center placement)
+-Updated ngons selector
+-Updated the main UI to enhance the workflow
+-Updated grid subdivisions shortcut : now power of 2 + work in the UV editor window
+-Added "Convert smooth", "combine" classic and "combine" weld, Normals constrain tool + Conform
+-Added new UV tool : best averaged plannar projection and best orthographic plan from camera angle (Best ortho plan)
+-Added double click options for Polygon creation and some Tools (split, slide, edge loop)
+-Added custom path to open with Photoshop (instead of using the Maya prefs setup)
+-Added UV set transfert (copy one UV set content to an other mesh)
+-Added Flip Edge from faces selection (also working on edges)
+-Added "Edge selection to Curve" tool in the Curves tools (with option to Open/Close)
+-Added "Edge loop and delete" tool (faster way to loop an edge and delete it)
+-Fixed a bug in the Interactive tool (bevel/merge)
+-Fixed the mirror function, now working when mesh is in object and component mode
+-Fixed and Re-added the selection convertion (with option to toggle it)
+-Fixed a compatibility issue with the froXnormal script (window name)
+-Fixed the CTRL+D extrude : does not conflic anymore with Maya options
+-Removed "Merge to center", "Split edge" (bugged/duplicate of other tools)
+
+//froTools 3.1.4
+-Updated to support last updates of the FBX exporter (FBX 2012/2013)
+-Updated UI on the Settings tab (new colors and organization)
+-Added choice to use the fbx file format version (2009 to 2013)
+-Removed "default" button setting for FBX (broken and not usefull)
+
+//froTools 3.1.3
+-Added "Keep Location" and "Center to grid" option for the OBJ exporter.
+-New colors for the UI, easier location of the tools
+
+//froTools 3.1.2
+-Added obj UVset export : you can export the desired uvset from a mesh to an obj file
+-Added combined export with desired filename for FBX and OBJ.
+-Added UVs button in the main dock for a access
+
+//froTools 3.1.1
+-Added the "Apply random colors" for the UV shells (with texture export)
+
+//froTools 3.1
+-Added curves tools
+-Added new UV tools (projections directions)
+-Added new normals tools (Normal cap/fillet)
+-Added new tool : snap vertex to nearest point on grid
+-Removed flip trangle direction (available with ctrl + alt + arrows left or right)
+-Added new shorcut for increasing/decreasing grid subdivivions (alt+x and alt+c)
+-Changed hotkey for target weld (now alt+d)
+-added "individual" checkbox for FBX export, if you uncheck it everything selected is exported in one FBX file
+
+//froTools 3.0.5 R2
+-Fixed custom UV rotation function (invalid call)
+
+//froTools 3.0.5 R1
+-Fixed the hide of the menubar in the hypershade/viewports (you have now a button with the HideUI)
+-Added some fucntions compatible with the G-Key (repeat key) of maya 
+	(weld/cut uv, fill hole, insert edge loop, merge center, delete edge/vertice)
+
+//froTools 3.0.5
+-Fixed dockControl system for Maya 2010 and before.
+-Fixed an invalid call of a function with the texture window button
+
+//froTools 3.0
+-New UI : Simple window with 2 tabs (poly tools and settings)
+-New UI : UV windows with integrated tools
+-New UI : added a lot of new icons
+-Rebuild some function in a more clean way.
+*/
+
+global proc froTools3()
+{
+	// if Window exists already delete it, so you cant call multiple windows
+    if (`window -exists froWindow3`) 
+	{
+		deleteUI froWindow3;
+		if (`windowPref -exists froWindow3`)  windowPref -remove froWindow3;
+	}
+	
+	float $mayaVersion = `getApplicationVersionAsFloat`;
+	float $mayaVersionRequired = 2011;
+		
+	//temp selector vars
+	global string $tempSelector[];
+	global string $tempLastType;
+	
+	//window settigns
+	int		$floating						= 0;		// 0=docked		1=floating
+	string	$defaultDockArea				= "right";	// "top", "left", "bottom", "right";
+	global string $frotitle;
+		$frotitle	= "froTools 3.2.5";
+	string $dock	= "dockfroTools";
+	int $winw = 202 + 16;
+
+    if( $mayaVersion >= $mayaVersionRequired )
+	{
+		if( `dockControl -exists $dock` )
+			deleteUI -control $dock;
+	}
+	
+	//init maya functions
+		source PolySelectConvert; //init the PolySelectConvert command
+		buildPreferenceMenu mainOptionsMenu; //init the Hide UI button
+
+	
+	//make the base window
+	window -t $frotitle -minimizeButton 1 -maximizeButton 0 froWindow3;
+	
+    //if( $mayaVersion >= $mayaVersionRequired )
+	//{
+		string $form = `formLayout -parent froWindow3`;
+	//}
+	
+	string $tabs = `tabLayout -innerMarginWidth 5 -innerMarginHeight 5`;
+	formLayout -edit
+		-attachForm $tabs "top"    0
+		 -attachForm $tabs "left"   0
+		 -attachForm $tabs "bottom" 0
+		 -attachForm $tabs "right"  0
+		 $form;
+		 
+	//tab setup
+		//TAB POLY
+		string $child1 = `scrollLayout -w ($winw + 26) -h 300 scroll1`;
+			frameLayout -label "SELECTION" -collapsable 1 -borderStyle "out" -bgc 0.2 0.2 0.2;
+				gridLayout -numberOfColumns 6 -cellHeight 26 -cellWidth ($winw / 6);
+					gridLayout -numberOfColumns 2 -cellHeight 26 -cellWidth 26;
+						iconTextButton 
+							-label "Locator"
+							-annotation "Create a locator object on the grid"
+							-image1 "locator.png" 
+							-command "CreateLocator";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 26 -cellWidth 26;
+					shelfButton  
+						-label ""
+						-annotation "Cube"
+						-image1 "polyCube.png" 
+						-dcc "CreatePolygonCubeOptions"
+						-command "polyCube -w 1 -h 1 -d 1 -sx 1 -sy 1 -sz 1 -ax 0 1 0 -cuv 4 -ch 1; objectMoveCommand;";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 26 -cellWidth 26;
+						shelfButton
+							-label ""
+							-annotation "Plane"
+							-image1 "polyMesh.png" 
+							-dcc "CreatePolygonPlaneOptions"
+							-command "polyPlane -w 1 -h 1 -sx 2 -sy 2 -ax 0 1 0 -cuv 2 -ch 1; objectMoveCommand;";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 26 -cellWidth 26;
+						shelfButton  
+							-label ""
+							-annotation "Cylinder"
+							-image1 "polyCylinder.png" 
+							-dcc "CreatePolygonCylinderOptions"
+							-command "polyCylinder -r 1 -h 2 -sx 12 -sy 1 -sz 1 -ax 0 1 0 -rcp 0 -cuv 3 -ch 1; objectMoveCommand;";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 26 -cellWidth 26;
+						shelfButton 
+							-label ""
+							-annotation "Sphere"
+							-image1 "polySphere.png" 
+							-dcc "CreatePolygonSphereOptions"
+							-command "polySphere -r 1 -sx 20 -sy 20 -ax 0 1 0 -cuv 2 -ch 1; objectMoveCommand;";
+					setParent ..;
+					
+					button
+						-l "Clear"
+						-bgc 0.6 0.6 0.6
+						-ann "Clear your selection (unselect all)"
+						-c "select -cl";
+				setParent ..;
+				
+				gridLayout -numberOfColumns 1 -cellHeight 32 -cellWidth ($winw);
+					gridLayout -numberOfColumns 5 -cellHeight 32 -cellWidth ($winw / 5);
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_sel_vertex.png" 
+							-annotation "Change selection mode to Vertex"
+							-command "froToolsChangeSelMode 1";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_sel_edges.png"
+							-annotation "Change selection mode to Edges"
+							-command "froToolsChangeSelMode 2";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_sel_faces.png"
+							-annotation "Change selection mode to Face"
+							-command "froToolsChangeSelMode 3";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_sel_object.png"
+							-annotation "Change selection to Object mode"
+							-command "froToolsChangeSelMode 0";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_transform.png"
+							-annotation "Transform tool"
+							-command "MovePolygonComponent";
+
+					setParent..;
+				setParent ..;
+				
+				gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw);
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+						button 
+							-label "Invert" 
+							-w 48 -h 22 
+							-bgc 0.2 0.2 0.2
+							-ann "Invert the current selection"
+							-command "InvertSelection";
+						button
+							-label "Grow +" 
+							-w 48 -h 22 
+							-bgc 0.2 0.2 0.2
+							-ann "Grow current selection"
+							-command "PolySelectTraverse 1";
+						button
+							-label "Shrink -" 
+							-w 48 -h 22 
+							-bgc 0.2 0.2 0.2
+							-ann "Shrink current selection"
+							-command "PolySelectTraverse 2";
+					setParent ..;
+				
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);	
+						button 
+							-label "Edge Ring" 
+							-w 48 -h 24 
+							-bgc 0.2 0.2 0.2
+							-ann "Selection of edge rings"
+							-command "polySelectSp -ring";
+						button 
+							-label "Edge Loop" 
+							-w 48 -h 24 
+							-bgc 0.2 0.2 0.2
+							-ann "Selection of edge loops"
+							-command "polySelectSp -loop";
+						button 
+							-label "nGons" 
+							-align "left"
+							-bgc 0.48 0.2 0.48
+							-ann "Find nGons in your current object and select them"
+							-command "froToolsNGons";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+						button
+							-label "Cycle Axis" 
+							-w 48 -h 22 
+							-bgc 0.60 0.57 0.48
+							-ann "Switch between axis (object, local, world)"
+							-c "froToolsToggleAxis";
+						button
+							-label "Border Edge" 
+							-w 48 -h 22 
+							-bgc 0.47 0.512 0.48
+							-ann "Toggle poly border visibility"
+							-c "ToggleBorderEdges; polyOptions -gl -sizeBorder 3.5";
+							
+						button
+							-l "Display Tri"
+							-bgc 0.66 0.51 0.62
+							-c "polyOptions -r -dt 1";
+					setParent ..;
+					
+				setParent ..; //gridlayout w = 1
+				
+					//temp selector
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+						gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 6);
+							button
+								-label "+" 
+								-w 48 -h 22 
+								-bgc 0.35 0.35 0.35
+								-ann "Add your selection in the Memory Selector"
+								-command "froToolsUpdateTemp 1";
+							button
+								-label "-" 
+								-w 48 -h 22 
+								-bgc 0.35 0.35 0.35
+								-ann "Remove your selection from the Memory Selector"
+								-command "froToolsUpdateTemp -1";
+						setParent ..;
+						button 
+							-label "Select Mem" 
+							-w 48 -h 22 
+							-bgc 0.55 0.7 0.4
+							-ann "Select the selection in the Memory Selector"
+							-command "froToolsSelectTemp";
+						button
+							-label "Clear Mem" 
+							-w 48 -h 22 
+							-bgc 0.35 0.35 0.35
+							-ann "Clean the Memory Selector"
+							-command "froToolsUpdateTemp 0";
+					setParent ..;
+			
+				//setParent ..; //gridlayout w = 1
+				
+				//checkbox
+				gridLayout -numberOfColumns 2 -cellHeight 16 -cellWidth ($winw / 2);
+					text -l "Selection precision : " -align "right";
+					floatSlider 
+						-w 64 -h 25 
+						-min 1 -max 100 -s 1
+						-v 4
+						-ann "Set the selection precision of Maya (Click Box Size)"
+						-dc "froToolsUpdateSliders" 
+						froTools_selectSlider;
+					
+					checkBox 
+						-label "Tweak Select"  
+						-changeCommand "froToolsToggleTweak"
+						-ann "Toggle tweak selection mode"
+						froTools_checkTweak;
+						
+					floatSlider 
+						-w 64 -h 25 
+						-min 6 -max 16 -s 1
+						-ann "Set the size of the vertex component display on the current selected mesh"
+						-dc "froToolsUpdateSliders" 
+						froTools_vertexSlider;
+						
+					checkBox
+						-label "Convert Selection"
+						-cc ""
+						-value 0
+						froTools_checkConvertSel;
+						
+					checkBox
+						-label "Ctrl+d manipulator"
+						-cc ""
+						-ann "If checked, the CTRL+D shorcut will keep your previous manipulator tool"
+						-value 1
+						froTools_checkManipDuplicate;
+						
+					checkBox
+						-label "Preserve UV" 
+						-changeCommand "froToolsTogglePreserveUV" 
+						-value 0 
+						froTools_checkPreserveUV;
+						
+					checkBox 
+						-label "Retain Spacing" 
+						-changeCommand "froToolsToggleRetainSpace" 
+						-value 1
+						froTools_checkRetainSpacing;
+						
+					checkBox 
+						-label "Disable Backface"  
+						-changeCommand "froToolsToggleCBS" 
+						froTools_checkBackface;
+						
+					checkBox 
+						-label "DelHist ExtVtx" 
+						-value 1
+						froTools_checkExtVtx;
+						
+					checkBox -label "Face Together" 
+						-changeCommand "froToolsKeepFaceTogether" 
+						-value 1
+						froTools_checkExtrude;
+					checkBox 
+						-label "Interactive" 
+						-value 1
+						froTools_checkInteractive;
+						
+				setParent ..;
+				
+				gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw);
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+						button
+							-bgc 0.25 0.25 0.5
+							-l "Pivot Origin"
+							-ann "Move the pivot to the World origin"
+							-c "froToolsOriPivots";
+							
+						button
+							-bgc 0.25 0.25 0.5
+							-l "Pivot Center"
+							-ann "Move the pivot to the center of the object"
+							-c "froToolsCenterPivots";
+							
+						button
+							-bgc 0.15 0.15 0.25
+							-ann "Snap Together Tool"
+							-l "Snap tgth"
+							-c "setToolTo snapTogetherToolCtx";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);		
+						button
+							-l "Move to Ori"
+							-bgc 0.2 0.3 0.4
+							-ann "Move object to the world 0,0,0"
+							-c "move -rpr 0 0 0";
+							
+						button
+							-l "Unhide All"
+							-bgc 0.2 0.3 0.4
+							-ann "Unhide all object already hided"
+							-c "ShowAll";
+							
+						button
+							-l "Outliner"
+							-bgc 0.25 0.25 0.25
+							-ann "Open the Outliner"
+							-c "OutlinerWindow";
+					setParent ..;
+					
+				setParent..;
+				
+				//correcting framelayout width size
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..;
+			
+			frameLayout -label "UVs" -collapsable 1 -borderStyle "out" -bgc 0.45 0.22 0.32 uv_frame;			
+				//uvs
+				gridLayout -numberOfColumns 1 -cellHeight 32 -cellWidth ($winw);
+					gridLayout -numberOfColumns 5 -cellHeight 32 -cellWidth ($winw / 5);
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvborder.png" 
+							-annotation "Toggle UV border highlights on the edges"
+							-command "ToggleTextureBorderEdges; polyOptions -gl -sizeBorder 3.5";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvcut.png" 
+							-annotation "Cut selected UV edges"
+							-command "polyPerformAction polyMapCut e 0; repeatLast -ac \"polyPerformAction polyMapCut e 0;\"  -acl \"Cut UV\"";
+						
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvweld.png" 
+							-annotation "Weld selected UV edges"
+							-command "polyPerformAction polyMapSew e 0; repeatLast -ac \"polyPerformAction polyMapSew e 0;\"  -acl \"Weld UV\"";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "polyUnitizeUVs.png" 
+							-annotation "Selected face UVs will be moved to fit 0 to 1 texture space"
+							-command "polyForceUV -unitize ";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvcenter.png" 
+							-annotation "Center the selection to the 0-1 uv space"
+							-command "froToolsMoveUVcenter 0";
+					setParent ..;
+				setParent ..;
+				
+				gridLayout -numberOfColumns 1 -cellHeight 32 -cellWidth ($winw);
+					gridLayout -numberOfColumns 5 -cellHeight 32 -cellWidth ($winw / 5);
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvrotate90.png" 
+							-annotation "Rotate -90 degrees"
+							-command "froToolsRotateUV -90";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvrotate90plus.png" 
+							-annotation "Rotate +90 degrees"
+							-command "froToolsRotateUV 90";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvrotate180.png" 
+							-annotation "Rotate 180 degrees"
+							-command "froToolsRotateUV 180";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvflipv.png" 
+							-annotation "Flip UVs Verticaly"
+							-command "polyForceUV -flipVertical -local";
+							
+						iconTextButton 
+							-style "iconOnly"
+							-image1 "froyok/froTools_uvfliph.png" 
+							-annotation "Flip UVs Horizontaly"
+							-command "polyForceUV -flipHorizontal -local;";
+					setParent ..;
+				setParent ..;
+				
+				gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+					button
+						-l "UV Window"
+						-bgc 0.46 0.33 0.36
+						-ann "Open the UV Window"
+						-c "froToolsTextureWindow";
+						
+					button
+						-l "UV Layout"
+						-bgc 0.46 0.33 0.36
+						-ann "Open and display the UV viewport with persp viewport"
+						-c "froToolsTextureLayout";
+
+					//gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 4);
+						button
+							-l "BestPlan"
+							-bgc 0.45 0.41 0.44
+							-ann "Averaged plan projection from selected faces"
+							-c "froToolsBestProjection; repeatLast -ac \"froToolsBestProjection\"  -acl \"Best Plannar\"";	
+							
+						button
+							-l "BestOrtho"
+							-bgc 0.45 0.41 0.44
+							-ann "Find the closest axis of the Persp camera and do a plannar projection"
+							-c "froToolsBestOrthoProjection; repeatLast -ac \"froToolsBestOrthoProjection\"  -acl \"Best Orthographic\"";	
+					//setParent ..;
+					
+						button
+							-l "Copy UV sets"
+							-bgc 0.26 0.3 0.35
+							-ann "Copy an UV set from one mesh to another one"
+							-c "froToolsCopyUVWindow";	
+					
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 4);
+							button
+								-l "Scale to:"
+								-bgc 0.25 0.25 0.36
+								-ann "Scale UV shells"
+								-c "froToolsCustomScaleUVfixed";
+							floatField 
+								-precision 2 -v 2 -min 0.05 -max 10 
+								-en true -w 1 
+								scaleUVvalue;
+					setParent ..;
+				setParent ..;
+				
+				//correcting framelayout width size
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..;
+			
+			
+			
+			/////////////////////////
+			frameLayout -label "CURVES" -collapsable 1 -borderStyle "out" -bgc 0.2 0.3 0.5 curve_frame;
+				gridLayout -numberOfColumns 5 -cellHeight 32 -cellWidth ($winw / 5);
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "curveEP.png" 
+						-annotation "EP Curve Tool"
+						-command "EPCurveTool";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "skin.png" 
+						-annotation "Loft curves in Polygon Quads"
+						-command "froToolsLoftCurves";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "extrude.png" 
+						-annotation "Extrude curves in Polygon Quads"
+						-command "froToolsExtrudeCurves";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "revolve.png" 
+						-annotation "Revolve a curve in Polygon Quads"
+						-command "froToolsRevolveCurves";
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "birail1Gen.png" 
+						-annotation "Bitrail 3 curves in Polygon Quads"
+						-command "froToolsBirailCurves";
+					
+				setParent ..;
+				
+				gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 3);
+						button
+							-bgc 0.2 0.2 0.2
+							-ann "Rebuild selected curves in Cubic mode"
+							-l "Rebld Cubic"
+							-c "froToolsRebuildCurves cubic";
+						gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw / 6);
+							intField -v 5 -ann "Number of spans for the Rebuild" froTools_rbcurve1;
+						setParent ..;
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 3);
+						button
+							-bgc 0.2 0.2 0.2
+							-ann "Rebuild selected curves in Linear mode"
+							-l "Rebld Linear"
+							-c "froToolsRebuildCurves linear";
+						gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw / 6);
+							intField -v 16 -ann "Number of spans for the Rebuild" froTools_rbcurve2;
+						setParent ..;
+					setParent ..;
+					
+					
+					//Revolve options
+					optionMenu -label "" -changeCommand "" -ann "Relvove mode of creation" froTools_revolveMode;
+						menuItem -label "Revolve World";
+						menuItem -label "Revolve Local Cv";
+					
+					optionMenu -label "" -changeCommand "" -ann "Relvove Axis" froTools_revolveMenu;
+						menuItem -label "Revolve X";
+						menuItem -label "Revolve Y";
+						menuItem -label "Revolve Z";
+						//set the menu on Y axis
+						optionMenu -e -sl 2 froTools_revolveMenu;
+				setParent..;
+				
+				gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw / 1);
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+						button
+							-l "Offset crv"
+							-bgc 0.21 0.29 0.33
+							-ann "Offset the selected curve(s)"
+							-c "offsetCurve -cb 2 -rp false -d 2 -cr 0.0 -tol 0.01 -ugn false -ch 1 -rn true";
+							
+						button
+							-l "Wire tool"
+							-bgc 0.28 0.29 0.33
+							-ann "Wire Tool (Deform geometry along a curve)"
+							-c "WireTool";
+							
+						button
+							-l "Lattice"
+							-bgc 0.21 0.29 0.33
+							-ann "Create Lattice"
+							-c "CreateLattice";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+						checkBox
+							-l "Close Edge curve"
+							-ann "If checked, the Edge to Curv tool will try to close the curve."
+							-v 0
+							froTools_checkEdgeToCurv;
+						
+						button
+							-l "EdgToCrv"
+							-bgc 0.28 0.29 0.33
+							-ann "Convet an edge selection to a new Curv"
+							-c "froToolsEdgeToCurve";
+					setParent ..;
+
+				setParent ..;
+				
+				//correcting framelayout width size
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..; //framelayout
+			
+			
+			
+			///////////////////////////
+			frameLayout -label "TOOLS" -collapsable 1 -borderStyle "out" -bgc 0.2 0.5 0.3;
+				gridLayout -numberOfColumns 5 -cellHeight 32 -cellWidth ($winw / 5);
+					//line1
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_history.png" 
+						-annotation "Delete history"
+						-command "froToolsChangeSelMode 0; DeleteHistory";
+						
+					shelfButton
+						-style "iconOnly"
+						-image1 "froyok/froTools_freeze.png"
+						-annotation "Freeze transform"
+						-command "FreezeTransformations"
+						-dcc "FreezeTransformationsOptions";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyDelEdgeVertex.png"
+						-annotation "Delete selected vertices/edges"
+						-command "performPolyDeleteElements;  repeatLast -ac \"performPolyDeleteElements;\" -acl \"Delete vertices/edges\"";
+						
+					iconTextButton
+						-style "iconOnly"
+						-image1 "polyCreateFacet.png"
+						-annotation "Create Polygon Tool"
+						-command "froToolsMakePolygonContext";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyAppendFacet.png"
+						-annotation "Append polygon Tool"
+						-command "setToolTo polyAppendFacetContext";
+
+					//line2
+					iconTextButton
+						-style "iconOnly"
+						-image1 "polyUnite.png"
+						-annotation "Combine the selected polygon objects into one single object"
+						-command "polyPerformAction polyUnite o 0";
+
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_combine2.png"
+						-annotation "Combine and Weld vertices"
+						-command "froToolsCombineMerge";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polySeparate.png"
+						-annotation "Separate"
+						-command "SeparatePolygon";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyChipOff.png"
+						-annotation "Extract faces"
+						-command "froToolsSeparateFace";
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyDuplicateFacet.png"
+						-annotation "Duplicate Face"
+						-command "froToolsDuplicatefaces";
+					
+					//line3
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_fillhole.png"
+						-annotation "Fill hole"
+						-command "froToolsFillHole;   repeatLast -ac \"froToolsFillHole;\"  -acl \"Fill hole\"";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyTriangulate.png"
+						-annotation "Triangulate"
+						-command "polyTriangulate";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyFlipEdge.png"
+						-annotation "Flip Triangle"
+						-command "froToolsTurnEdge; repeatLast -ac \"froToolsTurnEdge;\"  -acl \"Flip triangle\"";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyQuad.png"
+						-annotation "Quadrangulate"
+						-command "polyQuad -constructionHistory 1 -keepGroupBorder 1 -keepTextureBorders 1";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_tggrid.png"
+						-annotation "Target snap to Grid"
+						-command "froToolsSnapVertexToGrid";
+						
+					//line4
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "subdivCreate.xpm"
+						-annotation "Convert smooth preview to polygon"
+						-command "CreatePolyFromPreview";
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyCut.png"
+						-annotation "Cut Face Tool"
+						-command "CutPolygon";
+					
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyBevel.png"
+						-annotation "Bevel"
+						-command "froToolsCheckInteractiveTool Bevel";
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyMerge.png"
+						-annotation "Merge"
+						-command "froToolsCheckInteractiveTool Merge";
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_tgweld.png"
+						-annotation "Target Weld"
+						-command "froToolsTargetWeld";
+					
+					//line5
+					shelfButton 
+						-style "iconOnly"
+						-image1 "polySplitFacet.png"
+						-annotation "splitPolygonTool"
+						-dcc "SplitPolygonTool; froToolsShowToolsSettings"
+						-command "SplitPolygonTool; repeatLast -ac \"SplitPolygonTool;\"  -acl \"Split polygon\"";
+						
+					shelfButton 
+						-style "iconOnly"
+						-image1 "slideEdgeTool.png"
+						-annotation "Slide Edge Tool"
+						-dcc "SlideEdgeTool; froToolsShowToolsSettings"
+						-command "SlideEdgeTool; repeatLast -ac \"SlideEdgeTool;\"  -acl \"Slide edge\"";
+						
+					shelfButton 
+						-style "iconOnly"
+						-image1 "polySplitEdgeRing.png"
+						-annotation "Insert Edge Loop tool"
+						-dcc "setToolTo polySelectEditContext; froToolsShowToolsSettings"
+						-command "setToolTo polySelectEditContext; froToolsEdgeLoopTool; repeatLast -ac \"setToolTo polySelectEditContext; froToolsEdgeLoopTool;\"  -acl \"Insert edge loop\"";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_connect.png"
+						-annotation "Quad Connect tool (select an edge ring)"
+						-command "froToolsQuadConnect";
+						
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_loop.png"
+						-annotation "From edge(s) : make an edge loop and delete it."
+						-command "froToolsEdgeLoopAndDelete; repeatLast -ac \"froToolsEdgeLoopAndDelete\"  -acl \"Edge loop and delete\"";
+						
+				setParent..;
+				
+				gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+					button
+						-bgc 0.3 0.2 0.2
+						-l "Align X"
+						-c "froToolsAlign X";
+						
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 6);
+						text 
+							-l "Edg Lp:" 
+							-ann "Number of loops added by the Insert Edge loop Tool";
+						intField  
+						-v 1 -max 8 -min 1 
+						-changeCommand "froToolsEdgeLoopTool" 
+						-ann "Number of loops added by the Insert Edge loop Tool"					
+						froTools_edgeLoopNumber;
+					setParent ..;
+					
+					button
+						-bgc 0.6 0.4 0.2
+						-l "Mirror X"
+						-c "froToolsMirror 1";
+						
+					button
+						-bgc 0.2 0.3 0.2
+						-l "Align Y"
+						-c "froToolsAlign Y";
+						
+					//text -l "";
+						button
+							-l "Toggle Grid"
+							-bgc 0.6 0.6 0.6
+							-ann "Toggle the display of the Grid"
+							-c "ToggleGrid";
+						
+					button
+						-bgc 0.6 0.4 0.2
+						-l "Mirror Y"
+						-c "froToolsMirror 2";
+						
+					button
+						-bgc 0.2 0.2 0.3
+						-l "Align Z"
+						-c "froToolsAlign Z";
+						
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 7.75);
+						text -l "";
+						text -l "Copy " -ann "When enabled the mirror buttons make a copy instead of an instance";
+						checkBox -l "" -ann "When enabled the mirror buttons make a copy instead of an instance" froTools_checkCopyMirror;
+					setParent ..;
+						
+					button
+						-bgc 0.6 0.4 0.2
+						-l "Mirror Z"
+						-c "froToolsMirror 3";
+				setParent..;
+			
+			//correcting framelayout width size
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..; //framelayout
+			
+			
+			////////////////////////
+			frameLayout -label "NORMALS" -collapsable 1 -borderStyle "out" -bgc 0.4 0.4 0.1 normal_frame;
+				gridLayout -numberOfColumns 5 -cellHeight 32 -cellWidth ($winw / 5);
+					//face/average
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyNormalSetToFace.png" 
+						-annotation "Face Normal"
+						-command "polySetToFaceNormal -setUserNormal ";
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyNormalAverage.png" 
+						-annotation "Average Normal"
+						-command "polyAverageNormal -prenormalize 1 -allowZeroNormal 0 -postnormalize 0 -distance 0.0001 -replaceNormalXYZ 1 0 0 ";
+					
+					//invert
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyNormal.png" 
+						-annotation "Reverse normals"
+						-command "ReversePolygonNormals";
+					
+					//soften/hard					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyHardEdge.png" 
+						-annotation "Harden Edge Normal"
+						-command "SoftPolyEdgeElements 0";
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polySoftEdge.png" 
+						-annotation "Soften Edge Normal"
+						-command "SoftPolyEdgeElements 1";
+						
+					
+					//lock/unlock
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyNormalUnlock.png" 
+						-annotation "Unlock normals"
+						-command "polyNormalPerVertex -ufn true";
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyNormalLock.png" 
+						-annotation "Lock normals"
+						-command "polyNormalPerVertex -fn true";
+						
+					//conform
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "polyNormalsConform.png" 
+						-annotation "Make normals of all selected faces point in a consistent direction"
+						-command "ConformPolygonNormals";
+						
+					//custom functions
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_lookme.png"
+						-annotation "Look at Me normal tool"
+						-command "froToolsNormalLookatMe";
+					
+					iconTextButton 
+						-style "iconOnly"
+						-image1 "froyok/froTools_nmconstrain.png"
+						-annotation "Average selected faces and orient other normals"
+						-command "froToolsNormalConstrain";
+					
+				setParent ..;
+				
+				gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 4);
+						button
+							-l "Tgl Norm"
+							-bgc 0.6 0.6 0.1
+							-ann "Toogle the display of vertex normals"
+							-command "froToolsToggleNormals";
+						floatField 
+							-pre 2 
+							-min 0.01 -max 100 
+							-v 10.0 
+							-changeCommand "froToolsNormalsUpdateSize"  
+							froTools_normalDisplayRange;
+						
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 4);
+						button
+							-l "Set Norm"
+							-bgc 0.4 0.4 0.45
+						-annotation "Set Vertex Normal"
+						-command "SetVertexNormalOptions";
+
+						
+						button
+							-l "Edit Nr"
+							-bgc 0.45 0.45 0.4
+							-ann "Edit normal tool"
+							-command "PolygonNormalEditTool; toolPropertyWindow; setToolTo $gPolyNormEdit";
+					setParent ..;
+				setParent ..;
+				
+			//correcting framelayout width size
+			gridLayout -numberOfColumns 1 -cellHeight 1 -cellWidth ($winw );
+				separator -h 4 -w 200 -style "out";
+			setParent ..;
+			setParent ..; //framelayout
+			
+			
+			
+			/////////////////////////
+			frameLayout -label "Info" -collapsable 0 -borderStyle "out";
+				gridLayout -numberOfColumns 1 -cellHeight 20 -cellWidth ($winw);
+					gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 1.65);
+						text -align "center" -label "http://www.froyok.fr";
+						gridLayout -numberOfColumns 1 -cellHeight 20 -cellWidth ($winw / 2.5);
+							button
+								-l "Add to Shelf"
+								-c "froTools_createShelfButton"
+								-bgc 0.35 0.45 0.25;
+						setParent..;
+					setParent..;
+				setParent..;
+				
+			//correcting framelayout width size
+			gridLayout -numberOfColumns 1 -cellHeight 1 -cellWidth ($winw );
+				separator -h 4 -w 200 -style "out";
+			setParent ..;
+			setParent ..; //framelayout
+		setParent ..; //scrool
+	
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+	
+		//TAB MISC
+		string $child2 = `scrollLayout -w ($winw + 26) scroll2`;
+		
+		frameLayout -label "EXPORT Path" -collapsable 0 -borderStyle "out" -bgc 0.25 0.2 0.25;
+			gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 1.5);
+				textField -w 218 -fi "" -ann "Export path" froTools_EXPORTpath; 
+				gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 3);	
+					button 
+						-label "Set path" 
+						-h 20 
+						-c "froSetExportPath"; 
+				setParent ..;
+			setParent ..;
+					
+			//correcting framelayout width size
+			gridLayout -numberOfColumns 1 -cellHeight 1 -cellWidth ($winw );
+				separator -h 4 -w 200 -style "out";
+			setParent ..;
+		setParent ..;
+		
+		//check if the FBX plugin is loaded (if yes, display the UI)
+		if ( catch( `loadPlugin -quiet "fbxmaya"` ) ) 
+		{
+			warning( "Plug-in 'fbxmaya' was not found. FBX Export features will not be available." );
+			return;
+		}
+		else
+		{			
+			frameLayout -label "EXPORT : FBX settings (Static)" -collapsable 1 -borderStyle "out" -bgc 0.5 0.2 0.15;				
+				gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw );
+					button 
+						-label "Export selected to FBX" 
+						-w 48 -h 24 
+						-bgc 0.45 0.25 0.25
+						-command "froExportFBX";
+				setParent ..;
+				
+				gridLayout -numberOfColumns 1 -cellHeight 20 -cellWidth ($winw ) Exp3;				
+					gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 2);
+						checkBox -label "Center to Grid" froTools_checkFBXcenterPivot; 
+						checkBox -label "Keep Location" froTools_checkFBXoriginalLoc; 
+					setParent ..;
+					gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 2);
+						checkBox -l "toTri (Maya)" -ann "Triangulation performed at export by Maya (before FBX)" -v 0 froTools_checkFBXtrimaya;
+						checkBox -l "toTri (FBX)" -ann "Triangulation performed at export by FBX" -v 0 froTools_checkFBXtrifbx;
+					setParent ..;
+					
+					//individual/combined
+						gridLayout -numberOfColumns 3 -cellHeight 20 -cellWidth ($winw / 3);
+							text -l "";
+							checkBox -l "Individual" -ann "If checked : export objects in individual files" -v 1 froTools_checkFBXindividual;
+							text -l "";
+						setParent ..;
+					setParent ..;
+				//setParent ..;
+				
+				gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 2);
+					text -l "Combined filename : " -align "right";
+					textField -w 218 -fi "combined" -ann "Name of the combined mesh" froTools_FBXname;
+					
+					text -l "FBX version : " -align "right";
+					
+					$exportlist8 = `optionMenu 
+					-label "" 
+					-w ($winw / 1.2) -h 24
+					-ann ""
+					-cc "" 
+					exportlist8_menu`;
+					
+					//check FBX version
+					float $fbxv = `pluginInfo -q -version fbxmaya`;
+					
+					if($fbxv >= 2014)
+						menuItem -p $exportlist8 -l "2014" form0;
+					
+					menuItem -p $exportlist8 -l "2013" form1;
+					menuItem -p $exportlist8 -l "2012" form2;
+					menuItem -p $exportlist8 -l "2011" form3;
+					menuItem -p $exportlist8 -l "2010" form4;
+					menuItem -p $exportlist8 -l "2009" form5;
+					optionMenu -e -sl 3 exportlist8_menu;
+				setParent ..;
+				
+				gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 2);
+					checkBox -l "Smoothing Grp" -v 1 	froTools_checkFBXsmoothgrp;
+					checkBox -l "Split Normals" -v 0 	froTools_checkFBXsplit;
+					checkBox -l "Tang/Binormals" -v 1 	froTools_checkFBXbinormal;
+					checkBox -l "Smooth Msh" -v 0 		froTools_checkFBXsmoothmsh;
+					checkBox -l "Selection Sets" -v 0 	froTools_checkFBXsels;
+					checkBox -l "Convert to Null" -v 0 	froTools_checkFBXnull;
+					checkBox -l "Connections" -v 0 		froTools_checkFBXconnections;
+					checkBox -l "Ref Containers" -v 1 	froTools_checkFBXreference;
+				setParent ..;
+				
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+				
+			setParent ..;
+		}
+			
+			frameLayout -label "EXPORT : OBJ settings" -collapsable 1 -borderStyle "out" -bgc 0.15 0.35 0.15;
+				gridLayout -numberOfColumns 1 -cellHeight 24 -cellWidth ($winw);
+					gridLayout -numberOfColumns 1 -cellHeight 24 -cellWidth ($winw);
+						button 
+							-label "Export selected to OBJ" 
+							-ann "Export selected objects based on the settings below"
+							-w 48 -h 24 
+							-bgc 0.2 0.4 0.2
+							-command "froToolsExportOBJ";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 2);
+						checkBox -label "Center to Grid" froTools_checkOBJcenterPivot; 
+						checkBox -label "Keep Location" froTools_checkOBJoriginalLoc; 
+					setParent ..;
+					
+					gridLayout -numberOfColumns 3 -cellHeight 20 -cellWidth ($winw / 3 );
+						text -l "";
+						checkBox
+							-l "Individual"
+							-ann "Export combined if unchecked"
+							-v 1
+							froTools_objCheck;
+						text -l "";
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+						text -l "Combined filename : " -align "right";
+						textField -w 218 -fi "combined" -ann "Name of the combined mesh" froTools_OBJname;
+					setParent ..;
+					
+					gridLayout -numberOfColumns 2 -cellHeight 24 -cellWidth ($winw / 1.5);
+						button 
+							-label "Export UVset" 
+							-ann "Export based on the settings below"
+							-w 48 -h 24 
+							-bgc 0.2 0.34 0.32
+							-command "froToolsExportOBJuv";
+						gridLayout -numberOfColumns 3 -cellHeight 24 -cellWidth ($winw / 3);	
+							textField -w 218 -fi "lightmap" -ann "Name of the UVset to export" froTools_OBJUVname;
+						setParent ..;
+					setParent ..;
+				setParent ..;
+				
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+		
+			setParent ..;
+			
+			frameLayout -label "EXPORT zBrush" -collapsable 1 -borderStyle "out" -bgc 0.5 0.25 0.1 frame_zb;
+				gridLayout -numberOfColumns 1 -cellHeight 24 -cellWidth ($winw);
+					button 
+						-label "GoZ"
+						-w 48 -h 24 
+						-bgc 0.75 0.38 0
+						-command "source \"C:/Users/Public/Pixologic/GoZApps/Maya/GoZBrushFromMaya.mel\"";
+				setParent ..;
+
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+				
+			setParent ..;
+			
+			frameLayout -label "UV Shell colors" -collapsable 1 -borderStyle "out" frame_shell;
+				gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw);
+					gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 1.5);
+						button 
+							-label "Apply random shell colors" 
+							-ann "Apply random colors on each UV shell of the selected object"
+							-w 48 -h 24 
+							-bgc 0.2 0.2 0.5
+							-command "froToolsColorsUV";
+						gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw / 3);	
+							button 
+								-label "Export" 
+								-w 48 -h 24 
+								-bgc 0.45 0.25 0.25
+								-ann "Export current UV shell colors in a texture"
+								-command "froToolsSeperateShellsAndExport";
+						setParent ..;
+					setParent ..;
+					
+					gridLayout -numberOfColumns 3 -cellHeight 22 -cellWidth ($winw / 3);
+						text -align "right" -l "Texture size :" -ann "Min 256 / Max 8192";
+						intField -v 1024 -min 256 -max 8192 -ann "Min 256 / Max 8192" froTools_UVShellSize;
+						button
+							-l "Del Colors"
+							-ann "Remove colors from the selected mesh"
+							-bgc 0.3 0.1 0.1
+							-c "froToolsResetUVShellColors";
+					setParent ..;
+				setParent ..;
+				
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..;
+			
+			//hide UI custom
+			frameLayout -label "HIDE UI" -collapsable 1 -borderStyle "out" frame_ui;
+				button
+					-bgc 0.1 0.1 0.1
+					-ann "Hide the UI based on checkBox below"
+					-l "Hide the UI"
+					-c "froToolsHideUI";
+				
+				gridLayout -numberOfColumns 2 -cellHeight 16 -cellWidth ($winw / 2);
+					checkBox -label "Shelf" -changeCommand "" -value 0 check_UI_Shelf;
+					checkBox -label "Toolbox" -changeCommand "" -value 0 check_UI_Toolbox;	
+					checkBox -label "Attribute" -changeCommand "" -value 0 check_UI_Attribute;
+					checkBox -label "Tools Settings" -changeCommand "" -value 0 check_UI_Tools;
+					checkBox -label "Time Slider" -changeCommand "" -value 1 check_UI_TimeSlider;
+					checkBox -label "Range Slider" -changeCommand "" -value 1 check_UI_RangeSlider;
+					checkBox -label "Channel" -changeCommand "" -value 0 check_UI_Channel;
+					checkBox -label "Status line" -changeCommand "" -value 0 check_UI_Status;
+					checkBox -label "Help line" -changeCommand "" -value 1 check_UI_Help;
+					checkBox -label "Menu Bar Panels" -changeCommand "" -value 0 check_UI_menubar;
+				setParent ..;
+				
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..;
+
+			
+			//hotkeys
+			frameLayout -label "HOTKEYS" -collapsable 1 -borderStyle "out" frame_hotkeys;
+				gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw);
+					text -l "Click on the grey button to set the hotkey." -align "center";
+				setParent ..;
+				
+				gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+					text -l "Extrude Fce/Edg/vtx";
+					button
+						-l "CTRL+d"
+						-c "froToolsSetupHotKeys xsi";
+
+					text -l "Vtx Target Weld";
+					button
+						-l "ALT+d"
+						-c "froToolsSetupHotKeys snap";
+						
+					text -l "Reload txt";
+					button
+						-l "ALT+s"
+						-c "froToolsSetupHotKeys txt";
+						
+					text -l "Select UV shell";
+					button
+						-l "<"
+						-c "froToolsSetupHotKeys uv";
+						
+					text -l "Grid divisions -/+";
+					button
+						-l "ALT+x  ALT+c"
+						-c "froToolsSetupHotKeys grid";
+						
+					text -l "Flip Quad/Tri Edge";
+					button
+						-l "ALT+f"
+						-c "froToolsSetupHotKeys flip";
+				setParent ..;
+				
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			separator -h 8 -style "out" -bgc 0.5 0.15 0.25;
+		setParent ..;
+			setParent ..;
+			
+		setParent ..;
+	//end tabe setup
+	
+	tabLayout -edit
+		-tabLabel $child1 "             POLYGON" 
+		-tabLabel $child2 "             SETTINGS"
+		$tabs;
+	
+    if( $mayaVersion >= $mayaVersionRequired )
+	{
+		//show the window with dock control
+		dockControl
+			-area			$defaultDockArea
+			-floating		$floating
+			-content		froWindow3
+			-allowedArea	"left"
+			-allowedArea	"right"
+			-label			$frotitle
+			$dock;
+	}
+	else
+	{
+		//show the window with the old system
+		showWindow froWindow3;
+		window -e -height 600 froWindow3;
+	}
+	
+	//normals display
+	polyOptions -displayNormal false;
+	froToolsSetupCheckbox;
+	
+	//init maya scripts
+	source PolySelectConvert;
+	
+	//collapse some framelayout by default :
+	frameLayout -e -collapse 1 uv_frame;
+	frameLayout -e -collapse 1 curve_frame;
+	frameLayout -e -collapse 1 normal_frame;
+	frameLayout -e -collapse 1 frame_shell;
+	frameLayout -e -collapse 1 frame_zb;
+	frameLayout -e -collapse 1 frame_ui;
+	frameLayout -e -collapse 1 frame_hotkeys;
+	
+	print ($frotitle + " is ready.\n");
+}
+
+
+global proc froToolsSetupCheckbox()
+{
+	//common var
+	int $bool;
+	
+	//=================================================
+	//tweak mode setup
+	$bool = `manipMoveContext -query -tweakMode Move`;
+	checkBox -e -v $bool froTools_checkTweak;
+	
+	
+	//backface setup
+	$bool = `selectPref -query -useDepth`;
+	checkBox -e -v $bool froTools_checkBackface;
+	
+	
+	//Keep Face setup
+	$bool = `optionVar -q polyKeepFacetsGrouped`;
+	checkBox -e -v $bool froTools_checkExtrude;
+	
+	
+	//Preserve UV
+	$bool = `manipMoveContext -q -preserveUV Move`;
+	checkBox -e -v $bool froTools_checkPreserveUV;
+	
+	
+	//Retain space
+	$bool = `manipMoveContext -q -snapComponentsRelative Move`;
+	checkBox -e -v $bool froTools_checkRetainSpacing;
+
+	
+	//Export path
+	if( `optionVar -exists "froToolsExportPath"`) //update only if the optionVar exists
+		textField -e -fi `optionVar -q "froToolsExportPath"` froTools_EXPORTpath; //update path
+}
+
+///////////////////////////////////////////
+//UV Window with customs tools
+global proc froToolsTextureWindow()
+{
+	// if Window exists already delete it, so you cant call multiple windows
+    if (`window -exists froWindowUV`) 
+	{
+		deleteUI froWindowUV;
+		windowPref -remove froWindowUV;
+	}	
+	
+	global string $frotitle;
+	string $titleUV = $frotitle + " - UV Editor";
+	string $dock	= "dockfroTools";
+	int $winw = 105;
+	int $winwUV = 925;
+	float $pnSize = ($winw / float($winwUV)) * 100; //percentage //226 ori
+	
+	//make the base window
+	window -t $titleUV -width $winw -minimizeButton 1 -maximizeButton 1 -toolbox 0 froWindowUV;
+	$pane = `paneLayout -paneSize 1 $pnSize 1 -cn "vertical2" -swp 1 -aft 1 -st 1 froWindowUVpanel`;
+	
+	//build left ui
+	columnLayout uv_col_main;
+		
+		////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////
+		gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw);
+			text -l "Move UVs" -align "center";
+		setParent ..;
+		
+		gridLayout -numberOfColumns 3 -cellHeight 26 -cellWidth ($winw / 3);
+				text -l "";
+				
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvarrow_up.png" 
+					-annotation "Move up UV shell"
+					-command "froToolsMoveUV 0.0 1.0";
+					
+				text -l "";
+					
+				///////////
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvarrow_left.png" 
+					-annotation "Move UV shell to the left"
+					-command "froToolsMoveUV -1.0 0.0";
+				
+				floatField -pre 2 -v 1 -min 0.01 -max 10 froTools_uvmoverange;
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvarrow_right.png" 
+					-annotation "Move UV shell to the right"
+					-command "froToolsMoveUV 1.0 0.0";
+				
+				///////////
+				button 
+					-l "Snap"
+					-bgc 0.5 0.5 0.5
+					-c "froToolsSnapUVToGrid";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvarrow_down.png" 
+					-annotation "Move down UV shell"
+					-command "froToolsMoveUV 0.0 -1.0";
+				
+				button 
+					-l "Grid"
+					-bgc 0.5 0.5 0.5
+					-c "performTextureViewGridOptions true";
+				
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
+			separator -h 8 -style "in" -bgc 0.35 0.35 0.35;
+		setParent ..;
+		
+		////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////
+		gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw);
+			text -l "Tools" -align "center";
+		setParent ..;
+		
+		gridLayout -numberOfColumns 3 -cellHeight 32 -cellWidth ($winw / 3);
+			iconTextButton 
+				-style "iconOnly"
+				-image1 "froyok/froTools_uvborder.png" 
+				-annotation "Toggle UV border highlights on the edges"
+				-command "ToggleTextureBorderEdges; polyOptions -gl -sizeBorder 3.5";
+				
+			iconTextButton 
+				-style "iconOnly"
+				-image1 "froyok/froTools_uvcut.png" 
+				-annotation "Cut selected UV edges"
+				-command "polyPerformAction polyMapCut e 0; repeatLast -ac \"polyPerformAction polyMapCut e 0;\"  -acl \"Cut UV\"";
+			
+				
+			iconTextButton 
+				-style "iconOnly"
+				-image1 "froyok/froTools_uvweld.png" 
+				-annotation "Weld selected UV edges"
+				-command "polyPerformAction polyMapSew e 0; repeatLast -ac \"polyPerformAction polyMapSew e 0;\"  -acl \"Weld UV\"";
+		setParent ..;	
+		
+		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
+			separator -h 8 -style "in" -bgc 0.35 0.35 0.35;
+		setParent ..;
+		
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+		gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw);
+			text -l "Selection" -align "center";
+		setParent ..;
+		
+		
+		//gridLayout -numberOfColumns 1 -cellHeight 32 -cellWidth ($winw);
+			gridLayout -numberOfColumns 3 -cellHeight 32 -cellWidth ($winw / 3);
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_sel_vertex.png" 
+					-annotation "Change selection mode to Vertex"
+					-command "froToolsChangeSelMode 1";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvrotate180.png" 
+					-annotation "Rotate 180 degrees"
+					-command "froToolsRotateUV 180";
+				
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvcenter.png" 
+					-annotation "Center the selection to the 0-1 uv space"
+					-command "froToolsMoveUVcenter 1";
+			setParent ..;
+			
+		gridLayout -numberOfColumns 1 -cellHeight 2 -cellWidth ($winw );
+			text -l "";
+		setParent ..;
+			
+			gridLayout -numberOfColumns 3 -cellHeight 32 -cellWidth ($winw / 3);	
+				//line 2
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_sel_edges.png"
+					-annotation "Change selection mode to Edges"
+					-command "froToolsChangeSelMode 2";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvrotate90plus.png" 
+					-annotation "Rotate 90 degrees"
+					-command "froToolsRotateUV 90";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvscale2.png" 
+					-annotation "Scale selection by 2"
+					-command "froToolsScaleUV 2";
+			setParent ..;
+					
+		gridLayout -numberOfColumns 1 -cellHeight 2 -cellWidth ($winw );
+			text -l "";
+		setParent ..;
+		
+			gridLayout -numberOfColumns 3 -cellHeight 32 -cellWidth ($winw / 3);		
+				//line 3
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_sel_faces.png"
+					-annotation "Change selection mode to Face"
+					-command "froToolsChangeSelMode 3";
+					
+				iconTextButton
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvrotate90.png" 
+					-annotation "Rotate -90 degrees"
+					-command "froToolsRotateUV -90";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvscale05.png" 
+					-annotation "Scale selection by 0.5 (1/2)"
+					-command "froToolsScaleUV 0.5";
+			setParent ..;
+					
+		gridLayout -numberOfColumns 1 -cellHeight 2 -cellWidth ($winw );
+			text -l "";
+		setParent ..;
+		
+			gridLayout -numberOfColumns 3 -cellHeight 32 -cellWidth ($winw / 3);		
+				//line 4
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_sel_uv.png"
+					-annotation "Change selection mode to UVs"
+					-command "froToolsChangeSelMode 4";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvrotate45plus.png" 
+					-annotation "Rotate +45 degrees"
+					-command "froToolsRotateUV 45";
+					
+				iconTextButton
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvflipv.png" 
+					-annotation "Flip UVs Verticaly"
+					-command "polyForceUV -flipVertical -local";
+			setParent ..;
+					
+		gridLayout -numberOfColumns 1 -cellHeight 2 -cellWidth ($winw );
+			text -l "";
+		setParent ..;
+		
+			gridLayout -numberOfColumns 3 -cellHeight 32 -cellWidth ($winw / 3);		
+				//line 5
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_sel_shell.png"
+					-annotation "Select the UV shell of the selection"
+					-command "SelectUVShell";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvrotate45.png" 
+					-annotation "Rotate -45 degrees"
+					-command "froToolsRotateUV -45";
+					
+				iconTextButton 
+					-style "iconOnly"
+					-image1 "froyok/froTools_uvfliph.png" 
+					-annotation "Flip UVs Horizontaly"
+					-command "polyForceUV -flipHorizontal -local;";
+			setParent ..;
+		//setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
+			separator -h 8 -style "in" -bgc 0.35 0.35 0.35;
+		setParent ..;
+		
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+		gridLayout -numberOfColumns 1 -cellHeight 19 -cellWidth ($winw);	
+				text -l "Custom :";
+		setParent ..;
+		
+		//////////////////////////////
+		gridLayout -numberOfColumns 2 -cellHeight 18 -cellWidth ($winw / 2);	
+				text -l "Angle:";
+				floatField -precision 1 -v 45 -min -360 -max 360 -en true -w 1 angle_custom;
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw);	
+				button 
+					-bgc 0.91 0.94 1 
+					-l "Rotate" 
+					-c "froToolsRotateUVcustom" 
+					applyRotation;
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
+			text -l "";
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw);
+			gridLayout -numberOfColumns 2 -cellHeight 18 -cellWidth ($winw / 1.5);
+					floatField 
+						-precision 1 -v 1 
+						-min 0 -max 100 -en true 
+						-cc "froToolsToggleRatio" 
+						-ec "froToolsToggleRatio" 
+						-w 1 scaleValueU;
+						
+					gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw / 3);
+						text -l " <  U" -align "left";
+					setParent ..;
+			setParent ..;
+			
+			gridLayout -numberOfColumns 2 -cellHeight 18 -cellWidth ($winw / 1.5);
+					floatField 
+						-precision 1 -v 1 
+						-min 0 -max 100 -en false 
+						-w 1 scaleValueV;
+						
+					gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw / 3);
+						text -l " <  V" -align "left";
+					setParent ..;
+			setParent ..; 
+		setParent ..;
+			
+		//column 2
+		gridLayout -numberOfColumns 2 -cellHeight 18 -cellWidth ($winw / 2);
+			checkBox -l "Ratio" -v 1 -cc "froToolsToggleRatio" ratioCheckbox;
+			button -bgc 0.91 0.94 1 -l "Scale" -c "froToolsCustomScaleUV" applyScale;
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
+			separator -h 8 -style "in" -bgc 0.35 0.35 0.35;
+		setParent ..;
+		
+		
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+		gridLayout -numberOfColumns 1 -cellHeight 19 -cellWidth ($winw);	
+				text -l "Snapshot :";
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw ) UVsnapshot;
+			button 
+				-label "Snapshot" 
+				-w 48 -h 24 
+				-bgc 0.6 0.6 0.6
+				-command "froToolsSnapshot";
+				
+			gridLayout -numberOfColumns 2 -cellHeight 22 -cellWidth ($winw / 2);
+				button
+					-label "Color"
+					-bgc 1 0 0
+					-c "froToolsSnapshotColor"
+					colorPickerUV;
+				
+				intField 
+					-minValue 64 
+					-maxValue 4096 
+					-value 1024 
+					froToolsSnapSize;
+			setParent UVsnapshot;
+		setParent ..;
+
+		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
+			separator -h 8 -style "in" -bgc 0.35 0.35 0.35;
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 19 -cellWidth ($winw);	
+				text -l "Texture :";
+		setParent ..;
+
+		gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw );
+			button 
+				-label "Reload texture(s)" 
+				-w 48 -h 24 
+				-bgc 0.38 0.18 0.17
+				-ann "Reload all the texture related to this UVs"
+				-command "froToolsReloadTexture";
+
+			button 
+				-label "Open current txt" 
+				-w 48 -h 24 
+				-bgc 0.32 0.25 0.13
+				-ann "Open the current texture file related to this UV set in your Photoshop"
+				-command "froToolsOpenTexture current";
+				
+			button 
+				-label "Open all txt" 
+				-w 48 -h 24 
+				-bgc 0.32 0.25 0.13
+				-ann "Open all the texture related to this UV set in Photoshop"
+				-command "froToolsOpenTexture all";
+		setParent ..;
+		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw);	
+				text -l "";
+		setParent ..;
+		
+		gridLayout -numberOfColumns 1 -cellHeight 22 -cellWidth ($winw );
+			button 
+				-label "Set Photoshop" 
+				-w 48 -h 24 
+				-bgc 0.45 0.46 0.70
+				-ann "Set the path to Photoshop"
+				-command "froToolsSetPhotoshopFolder";
+			textField
+				-fi "" 
+				froTools_PhotoshopPath;
+		setParent ..;
+			
+		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
+			separator -h 8 -style "in" -bgc 0.35 0.35 0.35;
+		setParent ..;
+		
+	setParent ..;
+	
+    //remove texture panel if already added somewhere
+	string $uvTextureViews[] = `getPanel -scriptType "polyTexturePlacementPanel"`;
+    if( size($uvTextureViews) != 0 )
+        scriptedPanel -edit -unParent $uvTextureViews[0];
+
+	//add it to our panel
+	scriptedPanel -edit -parent $pane "polyTexturePlacementPanel1"; 
+	
+	//show the window
+	showWindow froWindowUV;
+	
+	//place the window
+	int $p[2] = froToolsScreenResolution();
+	$p[0] = ($p[0] / 2) - (678 / 2);
+	$p[1] = ($p[1] / 2) - ($winwUV / 2);
+	window -edit -widthHeight $winwUV 678 -tlc $p[0] $p[1] -mnb 1 froWindowUV;
+	
+	
+	//set focus on all the UVs shell
+	setFocus "polyTexturePlacementPanel1";
+	fitPanel -all;
+	
+	//setup hotoshop var
+	froToolsGetPhotoshopFolder();
+	
+	print ($titleUV + " is ready.\n");
+}
+
+
+
+global proc froToolsTextureLayout()
+{
+	// if Window exists already delete it, avoid floating buttons panel
+    if (`window -exists froWindowUV`) 
+	{
+		deleteUI froWindowUV;
+		windowPref -remove froWindowUV;
+	}
+
+	string $uvTextureViews[] = `getPanel -scriptType "polyTexturePlacementPanel"`;
+		
+	setNamedPanelLayout "Persp/Outliner"; 
+	scriptedPanel -edit -replacePanel outlinerPanel1 $uvTextureViews[0];
+}
+
+
+global proc froToolsSetPhotoshopFolder()
+{
+	string $path[] = `fileDialog2 -fm 1 -cap "Select Photoshop.exe"`;
+	if($path[0] != "") //update only if valid, otherwise keep blank/current path
+	{
+		string $filename = $path[0];    
+		textField -e -fi $filename froTools_PhotoshopPath; //update path
+		
+		optionVar -stringValue "froPhotoshopPath" $filename;
+	}
+	
+	//save the photoshop path in maya
+	//if( `optionVar -exists "froPhotoshopPath"`) //edit
+		
+	//else //create
+}
+
+//get the photoshop folder saved in maya
+global proc froToolsGetPhotoshopFolder()
+{
+	if( `optionVar -exists "froPhotoshopPath"`) //update only if the optionVar exists
+	{
+		string $filename = `optionVar -q "froPhotoshopPath"`;
+		textField -e -fi $filename froTools_PhotoshopPath; //update path
+	}
+}
+
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+          ##                  
+##   ##   ##                  
+##   ##                       
+### ### ####     #####   #### 
+## # ##   ##    ##      ##  ##
+## # ##   ##    ##      ##    
+## # ##   ##     ####   ##    
+##   ##   ##        ##  ##    
+##   ##   ##        ##  ##  ##
+##   ## ######  #####    #### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+//get screen resolution
+global proc int[] froToolsScreenResolution()
+{
+	int $f[2] = {0, 0};
+	
+	//get height
+	string $result = system("wmic desktopmonitor get screenheight");
+	$f[0] = `match "[0-9]+" $result`;
+	
+	//////////////////////////////////
+	
+	$result = system("wmic desktopmonitor get screenwidth");
+	$f[1] = `match "[0-9]+" $result`;
+	
+	return $f;
+}
+
+//chekc for NGons
+global proc froToolsNGons()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		//select mesh (with convertion to avoid components)
+		select -r $sel[0]; //select only 1
+		selectMode -object; //convert to object
+		$sel = `ls -sl`; //erase and reselect only our 1 object
+		select -r $sel[0];
+		
+		//select n-gons
+		polySelectConstraint -mode 3 -type 0x0008 -size 3; 
+		polySelectConstraint -disable; 
+		selectMode -component;
+		
+		string $selng[] = `filterExpand -fullPath 1 -expand 1 -sm 34`;
+
+		if(size($selng) > 0)
+		{	
+			hilite -r $sel[0];
+			selectType -smp 0 -sme 0 -smf 1 -smu 0 -pv 0 -pe 0 -pf 1 -puv 0;
+			
+			print (size($selng) + " n-gons found on \"" + $sel[0] + "\"");
+		}
+		else
+		{
+			selectMode -object;
+			select -r $sel[0];
+			print "No n-gons found.";
+		}
+	}
+}
+
+
+global proc froToolsShowToolsSettings()
+{
+	toolPropertyWindow -inMainWindow true;
+	toolPropertyShow;
+}
+
+global proc froToolsGridDivisions(string $type)
+{
+	int $div = `grid -q -divisions`;
+	int $uvdiv = 0;
+	string $panel = `getPanel -withFocus`;
+	
+	if($type == "plus")
+	{
+		if($panel == "polyTexturePlacementPanel1")
+		{
+			$uvdiv = `textureWindow -q -d $panel`;
+			if($uvdiv < 1) $uvdiv = 1; //security
+			$uvdiv *= 2;
+			
+			textureWindow -e -d $uvdiv $panel;
+			print ("\nUV Grid divisions : " + `textureWindow -q -d $panel`);
+		}
+		else
+		{
+			grid -divisions ($div * 2);
+			print ("\nGrid divisions : " + `grid -q -divisions`);
+		}
+	}
+	else
+	{
+		if($panel == "polyTexturePlacementPanel1")
+		{
+			$uvdiv = `textureWindow -q -d $panel`;
+			$uvdiv = $uvdiv / 2;
+			if($uvdiv < 2) $uvdiv = 1; //security
+			
+			textureWindow -e -d $uvdiv $panel;
+			print ("\nUV Grid divisions : " + `textureWindow -q -d $panel`);
+		}
+		else
+		{
+			grid -divisions ($div / 2);
+			print ("\nGrid divisions : " + `grid -q -divisions`);
+		}
+	}
+}
+
+
+global proc froToolsHideUI()
+{ 
+	global int $hideUI;
+	
+	if ($hideUI == 0)
+	{   
+		if(`checkBox -q -value check_UI_Status` == 1)
+			if (`menuItem -q -cb statusLineItem`) ToggleStatusLine;
+		
+		if(`checkBox -q -value check_UI_Shelf` == 1)
+			if (`menuItem -q -cb shelfItem`) ToggleShelf;
+			 
+		if(`checkBox -q -value check_UI_TimeSlider` == 1)
+			if (`menuItem -q -cb timelineItem`) ToggleTimeSlider;
+			
+		if(`checkBox -q -value check_UI_RangeSlider` == 1)
+			if (`menuItem -q -cb playbackRangeItem`) ToggleRangeSlider;
+
+		if(`checkBox -q -value check_UI_Help` == 1)
+			if (`menuItem -q -cb helpLineItem`) ToggleHelpLine;
+			
+		if(`checkBox -q -value check_UI_Toolbox` == 1)
+			if (`menuItem -q -cb toolboxItem`) ToggleToolbox;   
+			
+		if(`checkBox -q -value check_UI_Channel` == 1)
+			if (`menuItem -q -cb channelsLayersItem`) ToggleChannelsLayers; 
+			
+		if(`checkBox -q -value check_UI_Attribute` == 1)
+			if (`menuItem -q -cb attrEditorItem`) ToggleAttributeEditor;
+			
+		if(`checkBox -q -value check_UI_Tools` == 1)
+			if (`menuItem -q -cb toolSettingsItem`) ToggleToolSettings;
+
+		
+		if(`checkBox -q -value check_UI_menubar` == 1)
+		{
+			string $visiblePanel[] = `getPanel -all`;
+			if (size($visiblePanel)>0)
+			  if (`modelPanel -q -mbv $visiblePanel[0]`)
+				toggleMenuBarsInPanels false;
+		}
+		
+		
+		$hideUI = 1;
+	}
+	else
+	{
+		if (!`menuItem -q -cb statusLineItem`) 
+		  ToggleStatusLine;
+		if (!`menuItem -q -cb shelfItem`)    
+		  ToggleShelf;
+		if (!`menuItem -q -cb timelineItem`)    
+		  ToggleTimeSlider;
+		if (!`menuItem -q -cb playbackRangeItem`)    
+		  ToggleRangeSlider;
+		
+		//if (!`menuItem -q -cb commandLineItem`)
+		//  ToggleCommandLine;
+		
+		if (!`menuItem -q -cb helpLineItem`)  
+		  ToggleHelpLine;
+		if (!`menuItem -q -cb toolboxItem`)  
+		  ToggleToolbox; 
+		if (!`menuItem -q -cb channelsLayersItem`)      
+		  ToggleChannelsLayers;
+
+		
+		string $visiblePanel[] = `getPanel -all`;
+		if (size($visiblePanel)>0)
+		  if (!`modelPanel -q -mbv $visiblePanel[0]`)
+			toggleMenuBarsInPanels true;  
+		
+		
+		$hideUI = 0;
+	}
+}
+
+global proc froToolsSetupHotKeys(string $hotkey)
+{
+	////////////////////////////////////////////////////////////////
+	if($hotkey == "flip")
+	{
+		//flip triangle + alt+w
+		if (!`runTimeCommand -exists froToolsFlipKey`) 
+		{
+			runTimeCommand
+				-annotation "Flip edge from a Triangle/Quad"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsTurnEdge;")
+				froToolsFlipKey;
+		}
+		else
+		{
+			runTimeCommand -edit 
+				-annotation "Add grid division"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsTurnEdge;")
+				froToolsFlipKey;
+		}
+		
+		nameCommand
+			-annotation "froToolsFlipKeyNameCommand"
+			-sourceType "mel"
+			-command ("froToolsFlipKey")
+			froToolsFlipKeyNameCommand;
+		hotkey -keyShortcut "f" -alt -name ("froToolsFlipKeyNameCommand");
+
+	}
+
+	////////////////////////////////////////////////////////////////
+	if($hotkey == "grid")
+	{
+		//grid + alt+c
+		if (!`runTimeCommand -exists gridPlusKey`) 
+		{
+			runTimeCommand
+				-annotation "Add grid division"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsGridDivisions plus;")
+				gridPlusKey;
+		}
+		else
+		{
+			runTimeCommand -edit 
+				-annotation "Add grid division"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsGridDivisions plus;")
+				gridPlusKey;
+		}
+		
+		nameCommand
+			-annotation "gridPlusKeyNameCommand"
+			-sourceType "mel"
+			-command ("gridPlusKey")
+			gridPlusKeyNameCommand;
+		hotkey -keyShortcut "c" -alt -name ("gridPlusKeyNameCommand");
+		
+		
+		//------------------------------------------------------------
+		//grid - alt+x
+		if (!`runTimeCommand -exists gridMinusKey`) 
+		{
+			runTimeCommand
+				-annotation "Substract grid division"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsGridDivisions minus;")
+				gridMinusKey;
+		}
+		else
+		{
+			runTimeCommand -edit 
+				-annotation "Substract grid division"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsGridDivisions minus;")
+				gridMinusKey;
+		}
+		
+		nameCommand
+			-annotation "gridMinusKeyNameCommand"
+			-sourceType "mel"
+			-command ("gridMinusKey")
+			gridMinusKeyNameCommand;
+		hotkey -keyShortcut "x" -alt -name ("gridMinusKeyNameCommand");
+
+	}
+
+	////////////////////////////////////////////////////////////////
+	if($hotkey == "snap")
+	{
+		if (!`runTimeCommand -exists snapMergeKey`) 
+		{
+			runTimeCommand
+				-annotation "snap Merge vertex"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsTargetWeld;\nsetToolTo $gMove;")
+				snapMergeKey;
+		}
+		else
+		{
+			runTimeCommand -edit 
+				-annotation "snap Merge vertex"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsTargetWeld;\nsetToolTo $gMove;")
+				snapMergeKey;
+		}
+		
+		nameCommand
+			-annotation "snapMergeKeyNameCommand"
+			-sourceType "mel"
+			-command ("snapMergeKey")
+			snapMergeKeyNameCommand;
+			
+		hotkey -keyShortcut "d" -alt -name ("snapMergeKeyNameCommand");
+	}
+	
+	////////////////////////////////////////////////////////////////
+	if($hotkey == "xsi")
+	{
+		if (!`runTimeCommand -exists xsiDuplicateKey`) 
+		{
+			runTimeCommand
+				-annotation "xsi Duplicate type"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsXsiDuplicate")
+				xsiDuplicateKey;
+		}
+		else
+		{
+			runTimeCommand -edit
+				-annotation "xsi Duplicate type"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsXsiDuplicate")
+				xsiDuplicateKey;
+		}
+		
+		nameCommand
+			-annotation "xsiDuplicateKeyNameCommand"
+			-sourceType "mel"
+			-command ("xsiDuplicateKey")
+			xsiDuplicateKeyNameCommand;
+			
+		hotkey -keyShortcut "d" -ctl -name ("xsiDuplicateKeyNameCommand");
+	}
+	
+	////////////////////////////////////////////////////////////////
+	if($hotkey == "txt")
+	{	
+		if (!`runTimeCommand -exists txtReloadKey`) 
+		{
+			runTimeCommand
+				-annotation "Reload the texture on selected object"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsReloadTexture;")
+				txtReloadKey;
+		}
+		else
+		{
+			runTimeCommand -edit
+				-annotation "Reload the texture on selected object"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsReloadTexture;")
+				txtReloadKey;
+		}
+		
+		nameCommand
+			-annotation "txtReloadKeyNameCommand"
+			-sourceType "mel"
+			-command ("txtReloadKey")
+			txtReloadKeyNameCommand;
+			
+		hotkey -keyShortcut "s" -alt -name ("txtReloadKeyNameCommand");
+	}
+	
+	////////////////////////////////////////////////////////////////
+	if($hotkey == "uv")
+	{
+		if (!`runTimeCommand -exists uvIslandKey`) 
+		{
+			runTimeCommand
+				-annotation "Select the UV island"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("SelectUVShell;")
+				uvIslandKey;
+		}
+		else
+		{
+			runTimeCommand -edit
+				-annotation "Select the UV island"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("SelectUVShell;")
+				uvIslandKey;
+		}
+		
+		nameCommand
+			-annotation "uvIslandKeyCommand"
+			-sourceType "mel"
+			-command ("uvIslandKey")
+			uvIslandKeyCommand;
+			
+		hotkey -keyShortcut "<" -name ("uvIslandKeyCommand");
+	}
+	
+	////////////////////////////////////////////////////////////////
+	print("Hotkeys " + $hotkey + " ready.");
+}
+
+global proc froTools_createShelfButton()
+{	
+	global string $gShelfTopLevel;
+	global string $title;
+	string $currentShelf = `tabLayout -q -st $gShelfTopLevel`;
+	setParent ($gShelfTopLevel + "|" + $currentShelf);
+	
+	shelfButton 
+		-label $title
+		-annotation "Launch froTools"
+		-image1 "froyok/frotools.png" 
+		-command "source froTools3.mel; froTools3"; //no need to make a new button, automatically update
+}
+
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+                                                  ##                  
+ ####           ####                     ##       ##                  
+##  ##            ##                     ##                           
+##       ####     ##     ####    ####   ######  ####     ####   ##### 
+ ##     ##  ##    ##    ##  ##  ##  ##   ##       ##    ##  ##  ##  ##
+  ##    ##  ##    ##    ##  ##  ##       ##       ##    ##  ##  ##  ##
+   ##   ######    ##    ######  ##       ##       ##    ##  ##  ##  ##
+    ##  ##        ##    ##      ##       ##       ##    ##  ##  ##  ##
+##  ##  ##        ##    ##      ##  ##   ##       ##    ##  ##  ##  ##
+ ####    ####   ######   ####    ####     ####  ######   ####   ##  ##
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+global proc froToolsChangeSelMode(int $input)
+{
+	string $sel[] = `ls -sl -fl`;
+	
+	if(`checkBox -q -v froTools_checkConvertSel` == 1) //convert sel
+	{
+		selectMode -component;
+		
+		if($input == 3) //Faces
+		{
+			if(size($sel) != 0 && `selectMode -q -component`) PolySelectConvert 1; //convert to faces
+			selectType -smp 0 -sme 0 -smf 1 -smu 0 -pv 0 -pe 0 -pf 1 -puv 0;
+		}
+		else if($input == 2) //Edges
+		{
+			if(size($sel) != 0 && `selectMode -q -component`) PolySelectConvert 2; //convert to edges
+			selectType -smp 0 -sme 1 -smf 0 -smu 0 -pv 0 -pe 1 -pf 0 -puv 0;
+		}
+		else if($input == 1) //vertex
+		{
+			if(size($sel) != 0 && `selectMode -q -component`) PolySelectConvert 3; //convert to vetrex
+			selectType -smp 1 -sme 0 -smf 0 -smu 0 -pv 1 -pe 0 -pf 0 -puv 0;
+		}
+		else if($input == 4) //UVs
+		{
+			if(size($sel) != 0 && `selectMode -q -component`) PolySelectConvert 4; //convert to uv
+			selectType -smp 0 -sme 0 -smf 0 -smu 1 -pv 0 -pe 0 -pf 0 -puv 1;
+		}
+		else //other inputs return to object mode
+		{
+			//check the current tool before switching to object mode
+			if(`currentCtx` != "moveSuperContext"
+			|| `currentCtx` != "RotateSuperContext"
+			|| `currentCtx` != "scaleSuperContext" ) setToolTo moveSuperContext;
+			selectMode -object;
+		}
+	}
+	else //don't convert sel
+	{
+		selectMode -component;
+	
+		if($input == 3) //Faces
+		{
+			select -cl;
+			selectType -smp 0 -sme 0 -smf 1 -smu 0 -pv 0 -pe 0 -pf 1 -puv 0;
+		}
+		else if($input == 2) //Edges
+		{
+			select -cl;
+			selectType -smp 0 -sme 1 -smf 0 -smu 0 -pv 0 -pe 1 -pf 0 -puv 0;
+		}
+		else if($input == 1) //vertex
+		{
+			select -cl;
+			selectType -smp 1 -sme 0 -smf 0 -smu 0 -pv 1 -pe 0 -pf 0 -puv 0;
+		}
+		else if($input == 4) //UVs
+		{
+			select -cl;
+			selectType -smp 0 -sme 0 -smf 0 -smu 1 -pv 0 -pe 0 -pf 0 -puv 1;
+		}
+		else //other inputs return to object mode
+		{
+			//check the current tool before switching to object mode
+			if(`currentCtx` != "moveSuperContext"
+			|| `currentCtx` != "RotateSuperContext"
+			|| `currentCtx` != "scaleSuperContext" ) setToolTo moveSuperContext;
+			selectMode -object;
+		}
+	}
+}
+
+
+//Switch Rotation/Translation Axis
+global proc froToolsToggleAxis() 
+{
+	//chekc the current tool
+	if( `currentCtx` == "moveSuperContext")
+	{
+		int $var = `manipMoveContext -q -mode Move`;
+		
+		if ($var == 0) 
+		{
+			manipMoveContext -e -mode 1 Move;
+			print("Move tool set to : Local space\n");
+		}
+		else if($var == 1)
+		{
+			manipMoveContext -e -mode 2 Move;
+			print("Move tool set to : World space\n");
+		}
+		else
+		{
+			manipMoveContext -e -mode 0 Move;
+			print("Move tool set to : Object space\n");
+		}
+	}
+	else if(`currentCtx` == "RotateSuperContext")
+	{
+		int $var = `manipRotateContext -q -mode Rotate`;
+		
+		if ($var == 0) 
+		{
+			manipRotateContext -e -mode 1 Rotate;
+			print("Move tool set to : World space\n");
+		}
+		else if($var == 1)
+		{
+			manipRotateContext -e -mode 2 Rotate;
+			print("Move tool set to : Gimbal space\n");
+		}
+		else
+		{
+			manipRotateContext -e -mode 0 Rotate;
+			print("Move tool set to : Local space\n");
+		}
+	}
+	else if(`currentCtx` == "scaleSuperContext" )
+	{
+		int $var = `manipScaleContext -q -mode Scale`;
+		
+		if ($var == 0) 
+		{
+			manipScaleContext -e -mode 1 Scale;
+			print("Move tool set to : Local space\n");
+		}
+		else if($var == 1)
+		{
+			manipScaleContext -e -mode 2 Scale;
+			print("Move tool set to : World space\n");
+		}
+		else
+		{
+			manipScaleContext -e -mode 0 Scale;
+			print("Move tool set to : Object space\n");
+		}
+	}
+}
+
+//vertex size display update
+global proc froToolsUpdateSliders()
+{
+	float $vtxTemp = `floatSlider -q -v froTools_vertexSlider`;
+	polyOptions -sv $vtxTemp;
+	
+	int $vtxTemp2 = `floatSlider -q -v froTools_selectSlider`;
+	selectPref -clickBoxSize $vtxTemp2;
+}
+
+//Toggle backface selection
+global proc froToolsToggleCBS()
+{
+	int $var = `selectPref -q -useDepth`;
+	if ($var == 0) $var = 1; else $var = 0;
+	
+	selectPref -useDepth $var;
+	checkBox -e -v $var froTools_checkBackface;
+}
+
+global proc froToolsToggleTweak()
+{
+	int $var = `manipMoveContext -q -tweakMode Move`;
+	if ($var == 0) $var = 1; else $var = 0;
+	
+	manipMoveContext -e -tweakMode $var Move;
+	checkBox -e -v $var froTools_checkTweak;
+}
+
+global proc froToolsTogglePreserveUV()
+{
+	int $var = `manipMoveContext -q -preserveUV Move`;
+
+	if ($var == 0) $var = 1; else $var = 0;
+	
+	manipMoveContext -e -preserveUV $var Move;
+	manipScaleContext -e -preserveUV $var Scale;
+	manipRotateContext -e -preserveUV $var Rotate;
+	checkBox -e -v $var froTools_checkPreserveUV;
+}
+
+global proc froToolsToggleRetainSpace()
+{
+	//query then toggle
+	int $var = `manipMoveContext -q -snapComponentsRelative Move`;
+	if ($var == 0) $var = 1; else $var = 0;
+	
+	//updates tools/UI
+	manipMoveContext -e -snapComponentsRelative $var Move;
+	checkBox -e -v $var froTools_checkRetainSpacing;
+}
+
+global proc froToolsKeepFaceTogether()
+{
+	//original maya code
+		int $val=`optionVar -q polyKeepFacetsGrouped`;
+		if ($val) $val=0; else $val=1;
+		optionVar -intValue polyKeepFacetsGrouped $val;
+
+		// Menu item may not exist if this has been called from the shelf
+		if ( `menuItem -ex toggleGroupItem` )
+			menuItem -e -cb `optionVar -q polyKeepFacetsGrouped` toggleGroupItem;
+	
+	//update froTools
+		checkBox -e -v $val froTools_checkExtrude;
+}
+
+//toggle vertex normals
+global proc froToolsToggleNormals()
+{
+	int $bool[] = `polyOptions -q -displayNormal`;
+	if(!$bool[0])
+	{
+		polyOptions -displayNormal true;
+		polyOptions -pt;    // on vertices
+		float $lenght = `floatField -q -v froTools_normalDisplayRange`;
+		$lenght = $lenght / 100;
+		polyOptions -sn $lenght;
+	}
+	else
+		polyOptions -displayNormal false;
+}
+
+global proc froToolsNormalsUpdateSize()
+{
+	int $bool[] = `polyOptions -q -displayNormal`;
+	if($bool[0])
+	{
+		float $lenght = `floatField -q -v froTools_normalDisplayRange`;
+		$lenght = $lenght / 100;
+		polyOptions -sn $lenght;
+	}
+}
+
+//center pivot on each object
+global proc froToolsCenterPivots() 
+{
+	string $sel[] = `ls -sl`;
+	for ($each in $sel) 
+	{
+			CenterPivot $each;
+	}
+}
+
+//return pivot on origin for each object
+global proc froToolsOriPivots() 
+{
+	string $sel[] = `ls -sl`;
+	for ($each in $sel)
+	{
+		move -a 0 0 0 ($each + ".rotatePivot") ($each + ".scalePivot");
+	}
+}
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+// Temp Selector
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+global proc froToolsUpdateTemp(int $input)
+{
+	global string $tempSelector[];
+	global string $tempLastType;
+	string $currentType;
+	if($input == 1 || $input == -1)
+	{
+		if ( size(`filterExpand -sm 34`) != 0)
+			$currentType = "Face";
+		else if ( size(`filterExpand -sm 32`) != 0)
+			$currentType = "Edge";
+		else if ( size(`filterExpand -sm 31`) != 0)
+			$currentType = "Vertex";
+		else
+		{
+			error("Selector : Wrong type of selection.");
+			return;
+		}
+		
+		if($tempLastType == $currentType) //same type
+		{
+			string $sel[] = `ls -sl -fl`;
+
+			//if something is selected, add it to the tempSelector
+			if( size($sel) != 0)
+			{
+				//reselect old selection
+				select -cl;
+				for( $i = 0; $i < size($tempSelector); $i++)
+				{
+					select -add $tempSelector[$i];
+				}
+				
+				if($input == 1) //add
+				{
+					//add the new selection
+					for( $i = 0; $i < size($sel);$i++)
+					{
+						select -add $sel[$i];
+					}
+				}
+				else //remove
+				{
+					//add the new selection
+					for( $i = 0; $i < size($sel);$i++)
+					{
+						select -deselect $sel[$i];
+					}
+				}
+				
+				//update the Selector
+				$tempSelector = `ls -sl -fl`;
+				
+				//reselect the previous selection
+				select -cl;
+				for( $i = 0; $i < size($sel); $i++)
+				{
+					select -add $sel[$i];
+				}
+				
+				print("\nSelector : Last selection performed.");
+			}
+		}
+		else //not the same type, clear and add
+		{
+			$tempLastType = $currentType; //update the type of selection
+			clear($tempSelector);
+			if($input == 1) //add
+				$tempSelector = `ls -sl -fl`;
+			print("\nSelector : Only last selection added.");
+		}
+	}
+	else
+	{
+		//Karcher, Yar !
+		clear($tempSelector); 
+		print("\nSelector : Cleared.");
+	}
+}
+
+global proc froToolsSelectTemp()
+{
+	global string $tempSelector[];
+	select -cl; //clear current selection before
+	//loop selection
+	if(size($tempSelector) != 0)
+	{
+		for( $i = 0; $i < size($tempSelector); $i++)
+		{
+			select -add $tempSelector[$i];
+		}
+	}
+	else
+		warning("Selector : currently empty, nothing will be selected.");
+}
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+######                  ####          
+  ##                      ##          
+  ##     ####    ####     ##     #####
+  ##    ##  ##  ##  ##    ##    ##    
+  ##    ##  ##  ##  ##    ##    ##    
+  ##    ##  ##  ##  ##    ##     #### 
+  ##    ##  ##  ##  ##    ##        ##
+  ##    ##  ##  ##  ##    ##        ##
+  ##     ####    ####   ######  ##### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+global proc froToolsEdgeLoopAndDelete() 
+{
+	if(size(`filterExpand -sm 32`) != 0)
+	{
+		SelectContiguousEdges -order 1;
+		$loopSelection = `ls -sl -fl`;
+		string $selectedObject[] = `ls -sl -o`;
+		polyDelEdge -cv true;
+	}
+	else
+		error "No edge(s) selected...";
+}
+
+
+global proc froToolsTurnEdge()
+{
+	if(size(`filterExpand -sm 34`) != 0) //faces ?
+	{
+		selectMode -component;			
+		
+		//triangulate
+		polyTriangulate;
+		ConvertSelectionToContainedEdges;
+		
+		FlipTriangleEdge();
+		
+		selectMode -component;	
+		PolySelectConvert 1; //select -cl;
+		selectType -smp 0 -sme 0 -smf 1 -smu 0 -pv 0 -pe 0 -pf 1 -puv 0;
+	}
+	else if(size(`filterExpand -sm 32`) != 0) //edges ?
+		FlipTriangleEdge();
+	else
+		error "Wrong selection, please select Edges or Faces";
+}
+
+
+// Based on snapVertexToGrid.mel by Naughty (naughty_genepool@hotmail.com)
+global proc froToolsSnapVertexToGrid()
+{
+	//save selection
+	string $sel[] = `ls -sl -fl`;
+	
+	//snap vertices
+	float $gridSpace = `grid -q -sp`;
+	float $gridSubD = `grid -q -d`;
+	float $gridSize =($gridSpace/$gridSubD);
+
+	string $selVerts[] = `filterExpand -fullPath 1 -expand 1 -sm 31`;
+
+	if(!size($selVerts))	error "No Vertices selected!\n";
+
+	for ($vertex in $selVerts)
+	{
+		float $xyzPos[] = `xform -q -ws -a -t $vertex`;
+
+		$xyzPos[0] = $gridSize * ( int( ( $xyzPos[0] + $gridSize / 2.0 * `sign $xyzPos[0]` ) / $gridSize ) );
+		$xyzPos[1] = $gridSize * ( int( ( $xyzPos[1] + $gridSize / 2.0 * `sign $xyzPos[1]` ) / $gridSize ) );
+		$xyzPos[2] = $gridSize * ( int( ( $xyzPos[2] + $gridSize / 2.0 * `sign $xyzPos[2]` ) / $gridSize ) );
+
+		xform -ws -a -t $xyzPos[0] $xyzPos[1] $xyzPos[2] $vertex;
+	}
+	
+	//restore selection
+	select -r $sel;
+	hilite -r $sel;
+	
+	repeatLast -ac "froToolsSnapVertexToGrid;" -acl "Target grid";
+}
+
+
+//UV projection
+global proc froToolsUVprojection(string $dir)
+{
+	//check if faces are selected
+	if( size(`filterExpand -sm 34`) != 0)
+	{
+		if($dir == "best")
+		{
+			polyProjection -ch 1 -ibd on -type Planar -md "b";
+		}
+		else if($dir == "unitize")
+		{
+			polyForceUV -unitize;
+		}
+		else
+		{
+			//apply planar projection
+			polyProjection -ch 1 -ibd on -type Planar -md $dir;
+		}
+	}
+}
+
+//polyPerformAction polyUnite o 0
+global proc froToolsCombineMerge()
+{
+	//combine
+	polyPerformAction polyUnite o 0;
+	
+	//weld vertices
+	string $sel[] = `ls -sl`;
+	if(size($sel))
+	{
+		//select in object mode
+		select -r $sel[0];
+		froToolsChangeSelMode(0);
+		
+		//convert to vertex
+		ConvertSelectionToVertices;
+		
+		//merge all the vertex which are superimposed
+		polyMergeVertex -distance 0.001 -ch 1;
+		
+		//beck to object mode
+		select -r $sel[0];
+		froToolsChangeSelMode(0);
+	}
+}
+
+
+global proc froToolsMakePolygon()
+{
+	
+	//Before we do anything we get the name of the currently selected object/s and store the result in an array variable
+	string $LFdrawpolyToolSelectedObjectsList[] = `ls -sl`;
+	
+	//Next we check that variable to see if the user had more then one object selected and if so then...
+	if(`size($LFdrawpolyToolSelectedObjectsList)` >= 2)
+	{			
+			//...we assume the user is trying to resurface more than one object and we explain that this is not possible
+			error "More then one object selected! The resurfacing feature of LFdrawpolyTool only works on one object at a time.";
+
+	}
+	//Otherwise (else) the user must have either 1 OR no objects selected so...
+	else 
+	{
+		//Weed out the scenario where the user has nothing selected by sending them on to use the tool
+		if (`size($LFdrawpolyToolSelectedObjectsList)` == 0)
+		{
+			//Run the "LFdrawpolyToolProcessing" procedure
+			froToolsMakePolygonContext;
+		
+		}
+		//Otherwise (else) they must have only one object selected so...
+		else
+		{
+			//Check to see if the object the user DOES have selected is infact geometry and if so then...
+			
+				
+				//Check to see if the custom "LFdrawpolyToolLiveObject" attribute already exists on this object and if so then...
+				if (`attributeExists "LFdrawpolyToolLiveObject" $LFdrawpolyToolSelectedObjectsList[0]` == 1) 
+				{
+										
+					//...we remove (delete) the attribute so we can...
+					deleteAttr ($LFdrawpolyToolSelectedObjectsList[0] + ".LFdrawpolyToolLiveObject");
+					
+					//...add a fresh one before we...
+					addAttr -ln LFdrawpolyToolLiveObject -dt "string" ("|" + $LFdrawpolyToolSelectedObjectsList[0]);
+					setAttr -e -keyable true ("|" + $LFdrawpolyToolSelectedObjectsList[0] + ".LFdrawpolyToolLiveObject");
+					
+					//...make the object "live" and...
+					makeLive $LFdrawpolyToolSelectedObjectsList[0];
+					
+					//...run (jump to) the "LFdrawpolyToolProcessing" procedure
+					froToolsMakePolygonContext;
+				
+				}
+				//Otherwise (else) we dont need to delete it bofore we can add it so we can just...
+				else
+				{
+					//...tag the selected object with our custom identity attribute...
+					addAttr -ln LFdrawpolyToolLiveObject -dt "string" ("|" + $LFdrawpolyToolSelectedObjectsList[0]);
+					setAttr -e -keyable true ("|" + $LFdrawpolyToolSelectedObjectsList[0] + ".LFdrawpolyToolLiveObject");
+
+					//...make the object "live" and...
+					makeLive $LFdrawpolyToolSelectedObjectsList[0];
+
+					//...run (jump to) the "LFdrawpolyToolProcessing" procedure
+					froToolsMakePolygonContext;
+				
+				}
+				
+			//Otherwise (else) tell the user that the resurfacing feature of LFdrawpolyTool only works on geometry. 
+			
+		}			
+		
+	}
+}
+
+
+global proc froToolsMakePolygonContext()
+{
+	//Enter the "CreatePolygonTool"
+	CreatePolygonTool;
+		
+	//Create the "LFdrawpolyToolContext" scriptJob (the backbone of the script that alows us to use mel to make a Maya "tool")
+	int $LFdrawpolyToolContextScriptJobId = `scriptJob -runOnce 1 -event "ToolChanged" "froToolsMakePolygonProcessing"`;
+}
+
+
+global proc froToolsMakePolygonProcessing()
+{
+	//makeLive -none;
+	
+	//Get the name of the currently selected object/s and store the result in an array variable
+	string $LFdrawpolyToolProcessingSelectedObjectsList[] = `ls -sl`;
+	
+	//Loop through the list of selected objects and...
+	for($LFdrawpolyToolProcessingEachObject in $LFdrawpolyToolProcessingSelectedObjectsList)
+	{
+		//Select each object
+		select -r $LFdrawpolyToolProcessingEachObject;
+
+		//Triangulate the poly object
+		Triangulate -ch 0;
+
+		//Get the triangle count for the poly object and store the result in variable
+		int $LFdrawpolyToolProcessingEachPolygonTriangleCount[0] = `polyEvaluate -triangle`;
+
+		//Subtract 1 from the array size to compensate for the fact that arrays start at "0"
+		int $LFdrawpolyToolProcessingEachPolygonTriangleCountNew = $LFdrawpolyToolProcessingEachPolygonTriangleCount[0] - 1;
+
+		//Quadrangulate the poly object using the default Quadrangulate options
+		polyQuad  -a 180 -kgb 1 -ktb 1 -khe 0 -ws 0 -ch 0 $LFdrawpolyToolProcessingEachObject ($LFdrawpolyToolProcessingEachObject + ".f[0:" + $LFdrawpolyToolProcessingEachPolygonTriangleCountNew + "]");
+	
+	}
+	
+	select -cl;
+	string $LFdrawpolyToolProcessingSelectedGeometry[] = `SelectAllGeometry`; //Select all of the geometry in the scene
+	string $LFdrawpolyToolProcessingAllGeometry[] = `ls -sl`; //Now list the selected objects and store the result in a variable
+	select -cl;
+	
+	//Loop through all strokes in the scene and...
+	for($LFdrawpolyToolProcessingEachGeoObject in $LFdrawpolyToolProcessingAllGeometry)
+	{
+		//Check for the attribute that tells us if its ours and if not then...
+		if (`attributeExists "LFdrawpolyToolLiveObject" $LFdrawpolyToolProcessingEachGeoObject` == 1) 
+		{
+			select -r $LFdrawpolyToolProcessingEachGeoObject; //Select the object
+			deleteAttr ($LFdrawpolyToolProcessingEachGeoObject + ".LFdrawpolyToolLiveObject"); //Remove (delete) the attribute
+
+		}	
+	}
+	
+	select -r $LFdrawpolyToolProcessingSelectedObjectsList[0];
+	froToolsChangeSelMode(0);
+}
+
+//only work on selected object
+global proc froToolsReloadTexture()
+{
+	waitCursor -state on;
+	source AEfileTemplate.mel;
+	string $mats[];
+	string $files[];
+	string $sel[]=`ls -sl -tr -l`;
+
+	for ($node in $sel)
+	{
+		string $shapes[] = `listRelatives -f -s -ni $node`;
+		for ($shape in $shapes)
+		{
+			string $sgs[] = `listConnections -d 1 -s 0 -p 0 -t "shadingEngine" $shape`;
+			for ($sg in $sgs)
+			{
+				if (`connectionInfo -id ($sg+".surfaceShader")`)
+				{
+					string $matCon = `connectionInfo -sfd ($sg+".surfaceShader")`;
+					$mats[`size($mats)`] = `match "[^.]*" $matCon`;
+				}
+			}
+		}
+	}
+	
+	$mats = `stringArrayRemoveDuplicates $mats`;
+	
+	for ($mat in $mats)
+	{
+		string $nodes[] =`listHistory $mat`;
+		for ($node in $nodes)
+		{
+			if (`nodeType $node`=="file" || `nodeType $node`=="psdFileTex")
+			$files[`size($files)`]=$node;
+		}
+	}
+	
+	$files = `stringArrayRemoveDuplicates $files`;
+	int $count=0;
+	int $count2=0;
+	
+	for ($file in $files)
+	{
+		if (`attributeQuery -node $file -ex fileTextureName`)
+		{
+			string $theFile = `getAttr ($file+".fileTextureName")`;
+			if (`filetest -r $theFile`)
+			{
+				AEfileTextureReloadCmd ($file+".fileTextureName");
+				$count++;
+			}
+			else $count2++;
+		}
+	}
+	
+	if ($count2) print ("Reloaded "+$count+" texture"+ ($count > 1 ? "s":"")+", skipped "+$count2 +" texture"+ ($count2>1?"s":"")+"\n");
+	else print ("Reloaded "+$count+" texture"+ ($count > 1 ? "s":"")+"\n");
+		
+	waitCursor -state off;
+}
+
+global proc froToolsEdgeLoopTool()
+{
+	if( `currentCtx` == "polySelectEditContext")
+	{
+		int $divisions = `intField -q -v froTools_edgeLoopNumber`;
+		if( $divisions == 1)
+			polySelectEditCtx -e -splitType 1 -div 1 polySelectEditContext; 
+		else
+			polySelectEditCtx -e -splitType 2 -div $divisions polySelectEditContext;
+
+		setToolTo polySelectEditContext;
+	}
+}
+
+//Mirrors
+global proc froToolsMirror(int $input) 
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) == 0)
+		$sel = `ls -hl`;
+	
+	if(size($sel) != 0)
+	{
+		int $m = `selectMode -q -component`;
+		
+		//if not in object mode then find mesh
+		select -r $sel[0];
+		
+		//mirror
+		if( !`checkBox -q -v froTools_checkCopyMirror`)
+			instance;
+		else
+			duplicate;
+		
+		if($input == 1)
+			scale -r -1 1 1; //X
+		else if($input == 2)
+			scale -r 1 -1 1; //Y
+		else
+			scale -r 1 1 -1; //Z
+			
+		select -r $sel;
+		
+		//reselect old selection
+		if($m)
+		{
+			selectMode -q -component;
+			hilite -r $sel;
+		}
+		else
+			selectMode -q -object;
+	}
+}
+
+//Align component
+global proc froToolsAlign(string $Dir)
+{
+	$sel = `ls -sl -fl`;	
+	$Vert_Extents = `xform -ws -q -bb $sel`;
+	
+	if ($Dir == "X")
+	{
+		move -a -ws -moveX $Vert_Extents[3];
+	}
+	
+	if ($Dir == "Y")
+	{
+		move -a -ws -moveY $Vert_Extents[4];
+	}
+	
+	if ($Dir == "Z")
+	{
+		move -a -ws -moveZ $Vert_Extents[5];
+	}	
+}
+
+//Xsi duplicate tool, perform an action based on your selection
+global proc froToolsXsiDuplicate()
+{
+	//save current manipulator
+	$context = `currentCtx`;
+	if(`currentCtx` != "moveSuperContext"
+	&& `currentCtx` != "RotateSuperContext"
+	&& `currentCtx` != "scaleSuperContext" ) 
+		$context = "moveSuperContext";
+	
+	
+	if(`checkBox -q -v froTools_checkManipDuplicate`)
+	{
+		if ( size(`filterExpand -sm 34`) != 0)
+			polyExtrudeFacet;// -d 1 -kft `optionVar -q polyKeepFacetsGrouped`;
+		else if ( size(`filterExpand -sm 32`) != 0)
+			polyExtrudeEdge -d 1 -kft `optionVar -q polyKeepFacetsGrouped`;
+		else if ( size(`filterExpand -sm 31`) != 0)
+			froToolsExtrudeVertex;
+		else
+			Duplicate;
+	
+		setToolTo $context;
+	}
+	else
+	{
+		if ( size(`filterExpand -sm 34`) != 0)
+			performPolyExtrude(0);
+		else if ( size(`filterExpand -sm 32`) != 0)
+			performPolyExtrude(0);
+		else if ( size(`filterExpand -sm 31`) != 0)
+			froToolsExtrudeVertex;
+		else
+			Duplicate;
+	
+		// setToolTo ShowManips;
+	}
+}
+
+//Vertex extrude
+global proc froToolsExtrudeVertex()
+{
+	//List selection
+	//	-sl = selection
+	//	-l  = long name (full name instead of shortcut ones)
+	//	-fl = Flattens the returned list of objects so that each component is identified individually
+	string $sel[] = `ls -sl -l -fl`;
+	
+	if(size($sel) == 1)
+	{
+		float $pos[] = `pointPosition -w $sel[0]`; //get the vertex position
+		resetPolySelectConstraint; //reset selectionconstraint options
+		
+		selectType -ocm -polymeshEdge true; //selectionMode "Edge"
+		$edges = `polyListComponentConversion -te $sel`; //get Edges
+		select $edges; //select Edges
+		
+		polySelectConstraint -t 0x8000 -m 2 -w 1; //SelectionConstraint -> edge -> current and next -> border edges
+		$border = `ls -sl -l -fl`; //List selected (dvs. borderEdges)
+		
+		select $border; //select border
+		resetPolySelectConstraint; //reset selectionconstraint options
+		
+
+		polyExtrudeEdge -ch 1 -kft 1 $border[0] $border[1]; //extrude borderEdges
+		$verts = `polyListComponentConversion -tv`; //convert to vertices
+
+		select $verts; //select vertices and merge to center
+		polyMergeToCenter;
+
+		$vert = `ls -sl -l -fl`; //list remaining vertex
+		$splitEdge = `polyListComponentConversion -te $vert`; //convert to edges
+		select $splitEdge; //select the edge that split the "quadToBe"
+
+		selectType -ocm -polymeshEdge true; //selectionMode "Edge"
+		polySelectConstraint -t 0x8000 -m 2 -w 2; //SelectionConstraint -> edge -> current and next -> internal edges
+
+		resetPolySelectConstraint; //reset selectionconstraint options
+		$inside = `ls -sl -l -fl`; //list the internal edge
+		select $inside; //select internal edge
+
+		doDelete; //delete it
+		move $pos[0] $pos[1] $pos[2] $vert[0]; //move the remaining vertex to the 1st vtx position
+
+		selectType -ocm -polymeshVertex true; //selectionMode "Vertex"
+		select $vert; //select the new vertex
+		
+		froToolsDelHistReturnSelected();
+		
+		refresh -f -cv;
+	}
+	else if(size($sel) == 0)
+		error "Nothing selected, please select ONE vertex.";
+	else
+		error "Please select only ONE vertex.";
+}
+
+global proc froToolsDelHistReturnSelected()
+{	
+	$bool = `checkBox -q -v froTools_checkExtVtx`;
+	
+	if( $bool )
+	{
+		string $sel[] = `ls -sl -l -fl`;
+		string $vert = $sel[0]; //get vertex
+		
+		selectMode -object;
+		DeleteHistory;
+		print "History Deleted...\n";
+		string $selCur[] = `ls -sl -l -fl`;
+
+		selectMode -component;
+		selectType -ocm -polymeshVertex true; //selectionMode "Vertex"
+		select -r $vert; //select the new vertex
+	}
+}
+
+global proc froToolsTargetWeld()
+{
+	string $highlighted[] = `ls -hl`;
+	string $selVerts[] = `filterExpand -sm 31 -ex 1 -fp 1`;
+
+	float $distance;
+	string $nearest;
+	float $snapToPos[];
+	float $range = 32.0;
+	string $rulerName = `createNode "distanceBetween"`;
+	
+	
+	select -r $selVerts;
+	
+	for ($vtx=0 ; $vtx<(size($selVerts)) ; $vtx++)
+	{
+		float $closestSoFar = $range;
+		float $selVtxPos[3] = `pointPosition -w $selVerts[$vtx]`;
+
+		string $near[] = `froToolsReturnWithin $selVtxPos[0] $selVtxPos[1] $selVtxPos[2] $range`;
+		setAttr ($rulerName+".point1") $selVtxPos[0] $selVtxPos[1] $selVtxPos[2];
+
+		for ($obj in $near)
+		{
+			int $numVtx[] = `polyEvaluate -v $obj`;
+			for ($n=0 ; $n<$numVtx[0] ; $n++)
+			{
+				string $vertex = ($obj+".vtx["+$n+"]");
+				int $isSelected = 0;
+				
+				if (size(`ls -l -sl $vertex`)) $isSelected = 1;
+				if (!$isSelected)
+				{
+					float $objVtxPos[3] = `pointPosition -w $vertex`;
+					setAttr ($rulerName+".point2") $objVtxPos[0] $objVtxPos[1] $objVtxPos[2];
+
+					$distance = `getAttr ($rulerName+".distance")`;
+					if ($distance < $closestSoFar)
+					{
+						$closestSoFar = $distance;
+						$nearest = ($obj+".vtx["+$n+"]");
+					}
+				}
+			}
+		}
+		if (size($nearest))
+		{
+			//print ("Nearest found: "+$nearest+"\n"); //debug
+			$snapToPos = `pointPosition -w $nearest`;
+			move -a $snapToPos[0] $snapToPos[1] $snapToPos[2] $selVerts[$vtx];
+			
+			select -add $nearest;
+			polyMergeVertex  -d 0.2 -ch 1;
+		}
+		else	
+			print "No vertices found in the range.\n";
+	}
+	
+	delete $rulerName;
+	hilite -r $highlighted;
+	select -cl;
+	
+	repeatLast -ac "froToolsTargetWeld;" -acl "Target weld";
+}
+
+global proc string[] froToolsReturnWithin(float $x,float $y,float $z,float $dist)
+{
+	string $matches[];
+	int $n=0;
+
+	string $allObjs[] = `ls -sl -objectsOnly -l -g`; //list only from the selected object -> objectsOnly
+	for ($obj in $allObjs)
+	{
+		float $bbox[6] = `polyEvaluate -b $obj`;
+		int $match=0;
+		if (($x+$dist) > $bbox[0] && ($x-$dist) < $bbox[1])
+			if (($y+$dist) > $bbox[2] && ($y-$dist) < $bbox[3])
+				if (($z+$dist) > $bbox[4] && ($z-$dist) < $bbox[5]) 
+					$match++;
+		if ($match) 
+		{
+			$matches[$n]=$obj;
+			$n++;
+		}
+	}
+	return $matches;
+}
+
+global proc froToolsEdgeSplitBevel()
+{
+	/////////////////////////////////////
+	//ori script = cly_edgeSplitBevel
+	/////////////////////////////////////
+	
+	// maintenance and initial variable setup
+	int $offSetType;	
+	int $offSetSpace;
+	float $offSet;
+	int $uvType;
+	if ( `optionVar -exists cly_polyBevelOffsetType` )
+		$offSetType = `optionVar -q cly_polyBevelOffsetType`;
+	else {
+		$offSetType = 1;	// default
+		optionVar -iv cly_polyBevelOffsetType $offSetType;
+	}
+	if ( `optionVar -exists cly_polyBevelOffsetSpace` )
+		$offSetSpace = `optionVar -q cly_polyBevelOffsetSpace`;
+	else {
+		$offSetSpace = 0;	// default
+		optionVar -iv cly_polyBevelOffsetSpace $offSetSpace;
+	}
+	if ( `optionVar -exists cly_polyBevelOffset` )
+		$offSet = `optionVar -q cly_polyBevelOffset`;
+	else {
+		$offSet = 0.01;		// default	
+		optionVar -fv cly_polyBevelOffset $offSet;
+	}
+	if ( `optionVar -exists cly_polyBevelUVAssignment` )
+		$uvType = `optionVar -q cly_polyBevelUVAssignment`;
+	else {
+		$uvType = 0;		// default	
+		optionVar -fv cly_polyBevelUVAssignment $uvType;
+	}
+	
+	
+	
+	
+	// assuming/requiring poly edge selections
+	string $edges[] = `filterExpand -sm 32 -expand 1`;
+	int $edgeSelSize = size( $edges );
+	if ( !$edgeSelSize )
+		error " cly_splitEdges only works on edge selections";
+	// assuming/requiring one poly object at a time		 // to do: loop to allow
+	string $shapes[] = `ls -sl -o`;
+	if ( size( $shapes ) > 1 )
+		error " cly_splitEdges only works on one poly object at a time";
+		
+		
+		
+		
+	// prevent user from creating a single edge split "zero" hole
+	if ( $edgeSelSize == 1 ) {
+			string $edgeVrtsPLCC[] = `polyListComponentConversion -tv $edges[0]`;
+			string $edgeVrts[] = `filterExpand -sm 31 -expand 1 $edgeVrtsPLCC`;
+			
+			// holes
+			// _______________________________________________________________________________________
+			// origin hole only constraint
+			polySelectConstraint							// needs a selection!
+				-type 0x0001  							// vrts
+				-mode 3 								// all and next
+				-where 1								// where? 1 = ( on border )
+			;//										// end
+			polySelectConstraint -disable;					// reset		
+			// capture constraint
+			string $holeVrts[] = `filterExpand -sm 31 -expand 1`;
+			string $intersectionTest[] = {};
+			$intersectionTest = stringArrayRemove( $holeVrts, $edgeVrts ); 
+
+			if ( size( $intersectionTest ) != 1 ) {
+				//reset user selection environment for error;
+				select -d $holeVrts;
+				select -add $edges;
+				error " A single edge selection is only allowed if one point of that edge is \"touching\" a hole";
+			}
+	}
+	
+	
+	
+	
+	// record original  landscape ( instant convert and expand method )
+	string $allFaces[] = `filterExpand -sm 34 -expand 1 ( $shapes[0]+".f[*]" )`;
+	int $faceSizeBefore = `size( $allFaces )`;
+
+	// to do: make offset, uv boundary, and offset as a fraction... a preference
+	string $bevel[] =`polyBevel -offset $offSet -offsetAsFraction $offSetType -ws $offSetSpace -autoFit 1 -segments 1  -uvAssignment $uvType -fillNgons 0  $edges`;
+
+
+
+
+	// new face landscape
+	string $allFacesAfter[] = `filterExpand -sm 34 -expand 1 ( $shapes[0]+".f[*]" )`;
+	int $faceSizeAfter = `size( $allFacesAfter )`;
+	// get the new faces from the top of the new face order
+	string $bevelFaces[] ;
+	for ( $i = $faceSizeBefore; $i < $faceSizeAfter; $i++ ){
+		$bevelFaces[size($bevelFaces)] = $allFacesAfter[$i];
+	}
+	// get the bevel segmenting faces from the top of the bevel faces ( bevel faces above the size of $edges )
+	// store thier edge members to collapse
+	int $bevelFacesSize = size( $bevelFaces );
+	string $evilEdges[] ;
+	for ( $i = $edgeSelSize; $i < $bevelFacesSize; $i++ ){
+		string $segmentEdgesPLCC[] = `polyListComponentConversion -te $bevelFaces[$i]`;
+		string $segmentEdges[] = `filterExpand -sm 32 -expand 1 $segmentEdgesPLCC`;
+		for ( $e in $segmentEdges )
+			$evilEdges[size( $evilEdges )] = $e;
+	}	
+	string $cly_evilEdgesSet = `sets -name cly_evilEdgesTrash $evilEdges`;
+
+	// delete new faces ( hole that defines split )
+	delete $bevelFaces;
+
+	//clean
+	polyCollapseEdge  $cly_evilEdgesSet;
+	select -r `sets -q $cly_evilEdgesSet`;
+	delete $cly_evilEdgesSet;
+	string $cly_splitBevel = `rename $bevel[0] "cly_splitBevel"`;
+	
+	// present node exposing editables immediately
+	select -addFirst $cly_splitBevel;
+}
+
+
+
+//name: QuadConnect
+//by: Polyhertz
+global proc froToolsQuadConnect() //ori = startQuadConnect
+{
+	global string $curObj[], $vrts2Tweak[];
+	string $origList[];
+
+	$origList = `ls -sl -fl`;
+	$edjList = `filterExpand -ex 1 -sm 32`;
+	polySplitRing -stp 2 -div 1;
+	$edjsNew = `filterExpand -ex 1 -sm 32`;
+
+	//Get the object name
+	string $buff[];
+	tokenize $origList[0] "." $buff;
+	$curObj[0] = $buff[0];
+	select $edjsNew;
+    
+    
+	for ($currentEdj in $edjsNew)
+	{
+		//Find if new edges have a parallel tri and n-gon with 5 verts, if so make into quad-connection
+		$buff = `polyListComponentConversion -tf $currentEdj`;     //edges convert to faces
+		$faces = `filterExpand -sm 34 -ex 1 $buff`;                //save faces
+		$buff = `polyListComponentConversion -tv $faces[0]`;    //face1 from edge convert to verts
+		$e2F1 = `filterExpand -sm 31 -ex 1 $buff`;                //save verts from face1
+		$buff = `polyListComponentConversion -tv $faces[1]`;    //face2 from edge convert to verts
+		$e2F2 = `filterExpand -sm 31 -ex 1 $buff`;                //save verts from face2
+
+		if (size($e2F1) == 3) select $faces[1];
+		if (size($e2F2) == 3) select $faces[0];
+
+		if (size($e2F1) == 3 && size($e2F2) == 5 || size($e2F2) == 3 && size($e2F1) == 5)
+		{
+			PolySelectConvert 3; //verts
+			$fiveVrts = `ls -sl -fl`; //save verts from face with five sides
+			
+			select $currentEdj;
+			PolySelectTraverse 1; //grow
+			PolySelectConvert 3; //verts
+			$threeVrts = `ls -sl -fl`; //for future reference, save what verts we wont be needing
+			
+			select $currentEdj;
+			polySubdivideEdge -dv 1;
+			PolySelectConvert 3; //verts
+			select -d $threeVrts;
+			$newVrt = `ls -sl -fl`; //make sure only the newly divided edges middle vert is selected
+			
+			select $fiveVrts;
+			select -d $threeVrts;
+			select -add $newVrt;
+			$vrts2Tweak = `ls -sl -fl`; //save the two verts we will be connecting to make the quad loop
+			
+			froTools_vConProc;
+			select $vrts2Tweak;
+			froTools_slideProc;
+			}
+		}
+	}
+
+global proc froTools_vConProc ()
+{
+	global string $curObj[];
+
+	$origVrts = `ls -sl -fl`;
+	select $origVrts[0];
+	PolySelectConvert 2;
+	$origEdjs1 = `ls -sl -fl`;
+	select $origVrts[1];
+	PolySelectConvert 2;
+	$origEdjs2 = `ls -sl -fl`;
+
+	select $origVrts[0];
+	$origFacs1 = `polyListComponentConversion -fv -tf`;
+	select $origVrts[1];
+	$origFacs2 = `polyListComponentConversion -fv -tf`;
+
+	//Find what face the verts have in common
+	select $origFacs1; 
+	select -d $origFacs2;
+	select -tgl $origFacs1;
+	$facInComm = `ls -sl`;
+
+	//Find which of the verts connected edges lie on the shared face(s)
+	string $sharedFacEdjs[];
+	if (size($facInComm) != 0)
+    {
+		$facToEdj = `polyListComponentConversion -ff -te`;
+		$origEdjsAll = stringArrayCatenate ($origEdjs1, $origEdjs2);
+		select $origEdjsAll; select -d $facToEdj;
+		select -tgl $origEdjsAll;
+		$sharedFacEdjs = `ls -sl`;
+    }
+
+	if (size($facInComm) >= 1)
+    {
+		//edge group 1
+		select $sharedFacEdjs;
+		select -d $origEdjs2; //deselect the second verts edges
+		$vrt1SpecialBorder = `ls -sl -fl`; //group 1 edges
+		$vrtInfo = `polyInfo -ev $vrt1SpecialBorder[0]`; //primary edge 1 vert info
+		string $vrtTokOne[];
+		string $crunchy = $vrtInfo[0];
+		tokenize $crunchy " " $vrtTokOne;
+		
+		//edge group 2
+		select $sharedFacEdjs;
+		select -d $origEdjs1; //deselect the first verts edges
+		$vrt2SpecialBorder = `ls -sl -fl`; //group 2 edges
+		$vrtInfo = `polyInfo -ev $vrt2SpecialBorder[0]`; //group 2 verts
+		string $vrtTokTwo[];
+		string $crunchy = $vrtInfo[0];
+		tokenize $crunchy " " $vrtTokTwo;
+		
+		//find the edge numbers
+		string $curEdj;
+		$curEdj = $vrt1SpecialBorder[0];
+		int $edj1Num = (int(match("[0-9]+", `match "\[[0-9]+\]" $curEdj`)));
+		$curEdj = $vrt2SpecialBorder[0];
+		int $edj2Num = (int(match("[0-9]+", `match "\[[0-9]+\]" $curEdj`)));
+		
+		//find the original vert numbers
+		string $curVrtt;
+		$curVrtt = $origVrts[0];
+		int $origVrt1Num = (int(match("[0-9]+", `match "\[[0-9]+\]" $curVrtt`)));
+		$curVrtt = $origVrts[1];
+		int $origVrt2Num = (int(match("[0-9]+", `match "\[[0-9]+\]" $curVrtt`)));
+		
+		//Determin if verts are index 0 or 1 for their given edge
+		int $slideValOne;
+		int $slideValTwo;
+		if ($origVrt1Num == $vrtTokOne[2]) $slideValOne = 0;
+		if ($origVrt1Num == $vrtTokOne[3]) $slideValOne = 1;
+		if ($origVrt2Num == $vrtTokTwo[2]) $slideValTwo = 0;
+		if ($origVrt2Num == $vrtTokTwo[3]) $slideValTwo = 1;
+		
+		polySplit
+		-s 1
+		-sma 90
+		-ep $edj1Num $slideValOne
+		-ep $edj2Num $slideValTwo
+		$curObj;
+    }
+
+	select $origVrts;
+}
+
+global proc froTools_slideProc ()
+{
+	global string $vrts2Tweak[];
+	float $slidePercent = 0.66666;
+
+	//Get the verts x/y/z positions
+	$xyzOne = `xform -q -ws -t $vrts2Tweak[0]`;
+	$xyzTwo = `xform -q -ws -t $vrts2Tweak[1]`;
+
+	//Find the difference between each verts x/y/z value
+	$xDif = ($xyzOne[0] - $xyzTwo[0]);
+	$yDif = ($xyzOne[1] - $xyzTwo[1]);
+	$zDif = ($xyzOne[2] - $xyzTwo[2]);
+	if ($xDif < 0) {$xDif = $xDif * -1;}
+	if ($yDif < 0) {$yDif = $yDif * -1;}
+	if ($zDif < 0) {$zDif = $zDif * -1;}
+
+	//How far along the edge to slide
+	float $slideVal[2];
+	$slideVal[0] = ($xDif * $slidePercent);
+	$slideVal[1] = ($yDif * $slidePercent);
+	$slideVal[2] = ($zDif * $slidePercent);
+
+	//Determin where to slide to
+	float $xyzThree[];
+	if ($xyzOne[0] < $xyzTwo[0])
+		{$xyzThree[0] = ($xyzOne[0] + $slideVal[0]);}
+		else
+		{$xyzThree[0] = ($xyzOne[0] - $slideVal[0]);}
+	if ($xyzOne[1] < $xyzTwo[1])
+		{$xyzThree[1] = ($xyzOne[1] + $slideVal[1]);}
+		else
+		{$xyzThree[1] = ($xyzOne[1] - $slideVal[1]);}
+	if ($xyzOne[2] < $xyzTwo[2])
+		{$xyzThree[2] = ($xyzOne[2] + $slideVal[2]);}
+		else
+		{$xyzThree[2] = ($xyzOne[2] - $slideVal[2]);}
+
+	move $xyzThree[0] $xyzThree[1] $xyzThree[2] $vrts2Tweak[1];
+	clear $vrts2Tweak;
+}
+
+
+global proc froToolsSeparateFace()
+{
+	string $select[] = `filterExpand -sm 34 -ex false`;
+	
+	if ( 0 == size( $select ) )
+		error ( "Please select one or more face components." );
+		
+	string $currentObject = froToolsSeparateRootNode( $select[0] );
+	string $faces[];
+	int $numFaces = 0;
+	
+	string $origMesh, $newMesh, $dupeMesh;
+	
+	for ( $i = 0; $i < size( $select ); $i++ )
+	{
+		$faces[$numFaces++] = $select[$i];
+		
+		if ( froToolsSeparateRootNode( $select[$i+1] ) != $currentObject )
+		// Last face for this object.. perform separate
+		{
+			string $node = froToolsSeparateRootNode( $faces[0] );
+
+			int $intArray[] = `polyEvaluate -f $node`;
+			int $evalFaces = $intArray[0];
+			
+			int $componentRange[] = froToolsSeparateComponentRange( $select[$i] );
+			if ( $componentRange[0] != 0 || $componentRange[1] != ( $evalFaces - 1 ) )
+			{
+				string $dupe[] = `duplicate $node`;
+				$dupeMesh = $dupe[0];
+
+				// Delete selected faces from original object, and
+				// delete unselected faces from duplicate
+				select -r $faces;
+				delete;
+				$origMesh = `rename $node ( $dupeMesh + "#" )`;
+				$newMesh = `rename $dupeMesh $node`;
+				select -r $faces;
+				select -tgl ( $node + ".f[0:" + $evalFaces + "]" );
+				delete;
+
+				// Restore names
+				$newMesh = `rename $newMesh $dupeMesh`;
+
+				$origMesh = `rename $origMesh $node`;
+
+				//rename $newMesh ( $origMesh + "#" );
+			}
+			else
+			// User has selected all faces of object.. nothing to separate
+			{
+				//warning( "Skipping " + $node );
+			}
+
+			clear $faces;
+			$numFaces = 0;
+		}
+	}
+	
+	if(`objExists $newMesh`) select -r $newMesh;
+}
+
+global proc string froToolsSeparateRootNode( string $object )
+{
+	string $buffer[];
+	tokenize $object "." $buffer;
+	return $buffer[0];
+}
+
+global proc int[] froToolsSeparateComponentRange( string $select )
+{
+	string $buffer[];
+	int $i, $tokens;
+	int $elements[2] = { 0, 0 };
+
+	$tokens = `tokenize $select "[:]" $buffer`;
+				
+	$elements[0] = $elements[1] = int($buffer[1]);
+
+	if ( $tokens > 2 )
+		$elements[1] = int($buffer[2]);
+	
+	return $elements;
+}
+
+
+global proc froToolsDuplicatefaces()
+{
+	string $sel[] = `ls -sl -fl`;
+	
+	if(size($sel) != 0)
+	{
+		polyChipOff 
+			-kft `checkBox -q -v froTools_checkExtrude`
+			-dup 1 //duplicate, don't remove
+			-ws 0
+			-random 0.0
+			-offset 0.0 //disable offset
+			-w 0.0
+			-g 0.0 0.0 0.0
+			-ch true;
+	}
+}
+
+
+//=======================================
+global proc froToolsFillHole()
+{
+	if ( size(`filterExpand -sm 32`) != 0) //Edge
+	{
+			// Close empty loop
+			polyCloseBorder -constructionHistory 1;
+
+			// add divisions 
+			polyTriangulate -constructionHistory 1;
+			polyQuad -constructionHistory 1 -keepGroupBorder 1 -keepTextureBorders 1;
+	}
+	else //classic fill hole
+		polyCloseBorder -constructionHistory 1;
+}
+
+
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+ ####                                         
+##  ##                                        
+##  ##  ##  ##  ##  ##  ##  ##   ####    #####
+##      ##  ##  ## ###  ##  ##  ##  ##  ##    
+##      ##  ##  ###     ##  ##  ##  ##  ##    
+##      ##  ##  ##      ##  ##  ######   #### 
+##  ##  ##  ##  ##      ##  ##  ##          ##
+##  ##  ##  ##  ##       ####   ##          ##
+ ####    #####  ##        ##     ####   ##### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+global proc froToolsEdgeToCurve()
+{
+	if(`checkBox -q -v froTools_checkEdgeToCurv`)
+		polyToCurve -form 1 -degree 1; //close
+	else
+		polyToCurve -form 2 -degree 1; //open
+}
+
+global proc froToolsDuplicateAlongCurves()
+{
+	string $sel[] = `ls -sl`;
+	if(size($sel) == 2)
+	{		
+		int $nb = `intField -q -v froTools_duplicvnb`;
+
+		string $group = `group -empty`;
+		select -cl;
+		select -r $sel[0];
+		
+		string $temp[] = `duplicate -rr -st`;
+		parent $temp[0] $group;
+		select -r $temp[0];
+		
+		string $tempSel[];
+		string $name[];
+
+			for ($i=0; $i < ($nb-1); ++$i) //duplciate n-1 (10-1 = 9)
+			{
+				clear $name;
+				string $name[] = `duplicate -rr -st`;
+				
+				select -r $name[0]; //select last creation
+				select -add $tempSel; //add old selection
+				$tempSel =  `ls -sl`; //save all the selection
+				select -r $name[0]; //reselect the mesh (avoid duplicate of all the sleection)
+			}
+			select -r $tempSel; //reselect the global selection
+
+		select -add $temp[0];
+		select -d $sel[0];
+
+		select -add $sel[1]; //add the curve
+		PositionAlongCurve;
+		
+		select -r $group;
+	}
+}
+
+global proc froToolsLoftCurves()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		//loft the curves
+		string $loft[] = `loft -polygon 1 -ch 1 -range true -degree 1 -rsn true`;
+		select -r $loft[0];
+
+		//list connections
+		string $FF[] = `listRelatives $loft[0]`;
+		string $GG[] = `listConnections $FF[0]`;
+		
+		//find last nurbsTesselation
+		string $nbtes;
+		for( $i in $GG )
+		{
+			if ( `nodeType $i` == "nurbsTessellate" ) 
+			{
+				$nbtes = $i;
+			}
+		}
+		
+		//type of tesselation
+		setAttr ($nbtes + ".polygonType") 1; //quad
+		setAttr ($nbtes + ".format") 2; //general
+		
+		//UV tesselation
+		setAttr ($nbtes + ".uNumber") 1;
+		setAttr ($nbtes + ".vNumber") 1;
+		setAttr ($nbtes + ".uType") 3;
+		setAttr ($nbtes + ".vType") 3;
+
+		select -r $loft[0];
+	}
+	else
+		error "Nothing selected";
+}
+
+
+global proc froToolsRevolveCurves()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		//query curve pivot
+		float $pos[3] = `xform -ws -q -t`;
+			
+		//position (world or local ?)
+		string $revo[];
+		string $mode = `optionMenu -q -value froTools_revolveMode`;
+
+		//axis
+		int $ax[3] = {0,1,0};
+		string $axis = `optionMenu -q -value froTools_revolveMenu`;
+		if($axis == "Revolve X")
+			$ax = {1,0,0};
+		else if($axis == "Revolve Z")
+			$ax = {0,0,1};
+		else
+			$ax = {0,1,0};
+
+		//appl yrevolve
+		if($mode == "Revolve World")
+			$revo = `revolve -polygon 1 -ch 1 -range true -degree 1 -sections 16 -ax $ax[0] $ax[1] $ax[2] -p 0 0 0 -useLocalPivot false`;
+		else
+			$revo = `revolve -polygon 1 -ch 1 -range true -degree 1 -sections 16 -ax $ax[0] $ax[1] $ax[2] -p 0 0 0 -useLocalPivot true`;
+		
+		select -r $revo[0];
+
+		//list connections
+		string $FF[] = `listRelatives $revo[0]`;
+		string $GG[] = `listConnections $FF[0]`;
+		
+		//find last nurbsTesselation
+		string $nbtes;
+		for( $i in $GG )
+		{
+			if ( `nodeType $i` == "nurbsTessellate" ) 
+			{
+				$nbtes = $i;
+			}
+		}
+		
+		//type of tesselation
+		setAttr ($nbtes + ".polygonType") 1; //quad
+		setAttr ($nbtes + ".format") 2; //general
+		
+		//UV tesselation
+		setAttr ($nbtes + ".uNumber") 1;
+		setAttr ($nbtes + ".vNumber") 1;
+		setAttr ($nbtes + ".uType") 3;
+		setAttr ($nbtes + ".vType") 3;
+
+		select -r $revo[0];
+		
+		//update pivot of the created mesh
+		if($mode != "Revolve World")
+			move -a $pos[0] $pos[1] $pos[2] ($revo[0] + ".rotatePivot") ($revo[0] + ".scalePivot");
+	}
+	else
+		error "Nothing selected";
+}
+
+global proc froToolsExtrudeCurves()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		string $ext[] = `extrude -polygon 1 -ch 1 -extrudeType 2 -rotation 0 -scale 1 -fixedPath 0 -useComponentPivot 0  -useProfileNormal 0`;
+		select -r $ext[0];
+
+		//list connections
+		string $FF[] = `listRelatives $ext[0]`;
+		string $GG[] = `listConnections $FF[0]`;
+		
+		//find last nurbsTesselation
+		string $nbtes;
+		for( $i in $GG )
+		{
+			if ( `nodeType $i` == "nurbsTessellate" ) 
+			{
+				$nbtes = $i;
+			}
+		}
+		
+		//type of tesselation
+		setAttr ($nbtes + ".polygonType") 1; //quad
+		setAttr ($nbtes + ".format") 2; //general
+		
+		//UV tesselation
+		setAttr ($nbtes + ".uNumber") 1;
+		setAttr ($nbtes + ".vNumber") 1;
+		setAttr ($nbtes + ".uType") 3;
+		setAttr ($nbtes + ".vType") 3;
+
+		select -r $ext[0];
+
+	}
+	else
+		error "Nothing selected";
+}
+
+
+global proc froToolsRebuildCurves(string $type)
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		if($type == "cubic")
+		{
+			int $spans = `intField -q -v froTools_rbcurve1`;
+			rebuildCurve -spans $spans -degree 3;
+		}
+		else
+		{
+			int $spans = `intField -q -v froTools_rbcurve2`;
+			rebuildCurve -spans $spans -degree 1;
+		}
+	}
+	else
+		error "Nothing selected";	
+}
+
+global proc froToolsBirailCurves()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		string $ext[] = `singleProfileBirailSurface -polygon 1 -ch 1 -tm 1`;
+		select -r $ext[0];
+
+		//list connections
+		string $FF[] = `listRelatives $ext[0]`;
+		string $GG[] = `listConnections $FF[0]`;
+		
+		//find last nurbsTesselation
+		string $nbtes;
+		for( $i in $GG )
+		{
+			if ( `nodeType $i` == "nurbsTessellate" ) 
+			{
+				$nbtes = $i;
+			}
+		}
+		
+		//type of tesselation
+		setAttr ($nbtes + ".polygonType") 1; //quad
+		setAttr ($nbtes + ".format") 2; //general
+		
+		//UV tesselation
+		setAttr ($nbtes + ".uNumber") 1;
+		setAttr ($nbtes + ".vNumber") 1;
+		setAttr ($nbtes + ".uType") 3;
+		setAttr ($nbtes + ".vType") 3;
+
+		select -r $ext[0];
+
+	}
+	else
+		error "Nothing selected";
+}
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+##   ##                                 ####          
+##   ##                                   ##          
+###  ##  ####   ##  ##  ######   ####     ##     #####
+#### ## ##  ##  ## ###  ## # ##     ##    ##    ##    
+## #### ##  ##  ###     ## # ##     ##    ##    ##    
+##  ### ##  ##  ##      ## # ##  #####    ##     #### 
+##   ## ##  ##  ##      ## # ## ##  ##    ##        ##
+##   ## ##  ##  ##      ## # ## ##  ##    ##        ##
+##   ##  ####   ##      ##   ##  #####  ######  ##### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+global proc froToolsNormalLookatMe()
+{
+	if ( size(`filterExpand -sm 31`) != 0)
+	{
+		string $sel[] = `ls -sl -fl`;
+		float $cam[3] = `camera -q -position persp`;
+		float $vtxPos[3] = `xform -q -ws -t $sel[size($sel) - 1]`; //query last vertex selected
+		
+		//vector from one point to another
+		vector $one = <<$vtxPos[0], $vtxPos[1], $vtxPos[2]>>;
+		vector $two = <<$cam[0], $cam[1], $cam[2]>>;
+		vector $result = $two - $one;
+
+		//normlaize the result
+		$result = unit( << $result.x, $result.y, $result.z >> );
+		float $temp[3] = {$result.x, $result.y, $result.z};
+		
+		//Apply the vector to the normal of all the vertices
+		polyNormalPerVertex -xyz $temp[0] $temp[1] $temp[2];
+		
+		//don't unlock, it will reset the default value
+		//polyNormalPerVertex -ufn true;
+	}
+	else
+	{
+		error("Normal : Wrong type of selection.");
+		return;
+	}
+}
+
+
+global proc froToolsNormalConstrain()
+{
+	//faces selected ?
+	if ( size(`filterExpand -sm 34`) != 0)
+	{
+		//save the faces
+		string $sel[] = `ls -sl -fl`;
+		
+		//face normal then average
+		polySetToFaceNormal -setUserNormal;
+		polyAverageNormal -prenormalize 1 -allowZeroNormal 0 -postnormalize 0 -distance 0.0001 -replaceNormalXYZ 1 0 0;
+		
+		//Invert selection and soften
+		InvertSelection();
+		
+		//soften
+		SoftPolyEdgeElements(1);
+		
+		//reselect
+		select -r $sel;
+	}
+}
+
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+                                                                 ##                  
+####            ##                                      ##       ##                  
+ ##             ##                                      ##                           
+ ##    #####   ######   ####   ##  ##   ####    ####   ######  ####    ##  ##   #### 
+ ##    ##  ##   ##     ##  ##  ## ###      ##  ##  ##   ##       ##    ##  ##  ##  ##
+ ##    ##  ##   ##     ##  ##  ###         ##  ##       ##       ##    ##  ##  ##  ##
+ ##    ##  ##   ##     ######  ##       #####  ##       ##       ##    ##  ##  ######
+ ##    ##  ##   ##     ##      ##      ##  ##  ##       ##       ##    ##  ##  ##    
+ ##    ##  ##   ##     ##      ##      ##  ##  ##  ##   ##       ##     ####   ##    
+####   ##  ##    ####   ####   ##       #####   ####     ####  ######    ##     #### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+// Interactive tools
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+//Check if interactive mode is enabled.
+global proc froToolsCheckInteractiveTool(string $command)
+{
+	int $bool = `checkBox -q -value froTools_checkInteractive`;
+	
+	if($bool) //interactive mode
+	{
+		if( size(`filterExpand -sm 34`) == 0
+		 && size(`filterExpand -sm 32`) == 0
+		 && size(`filterExpand -sm 31`) == 0)
+			warning "Select at least one component !" ;
+		else
+		{
+			froToolsInteractiveToolSetup();
+			froToolsInteractive($command);
+		}
+		
+	}
+	else //classic mode
+	{
+		if($command == "Extrude") froToolsXsiDuplicate; 
+		else if($command == "Bevel") BevelPolygonOptions;
+		else if($command == "Merge") PolyMergeOptions;
+		else error("Interactive tool : invalid commande call");
+	}
+}
+
+
+//----------------------- Commands to call tools -------------------------------------------
+
+global proc froToolsInteractive(string $iT_command)
+{
+	global	string	$iT_createNode[];
+					string	$sel[] 		= `ls -sl -fl`;
+					string	$iT_tool 	= "froToolsInteractiveTool";
+			
+	froTools_iT_cleanNode();
+
+	if ($iT_command == "Merge")
+	{
+		ConvertSelectionToVertices; selectType -pv 1;	
+		$iT_createNode = `polyMergeVertex`; 
+	}
+
+	if ($iT_command == "Bevel")
+	{
+		if(`currentUnit -query -linear` == "cm") //cm
+			$iT_createNode = `polyBevel -offset 0.25 -offsetAsFraction 1 -autoFit 1 -segments 1 -worldSpace 1 -uvAssignment 0 -fillNgons 0 -mergeVertices 1 -mergeVertexTolerance 0.0001 -smoothingAngle 120 -miteringAngle 180 -angleTolerance 180 -ch 1`;
+		else
+			$iT_createNode = `polyBevel -offset 0.0025 -offsetAsFraction 1 -autoFit 1 -segments 1 -worldSpace 1 -uvAssignment 0 -fillNgons 0 -mergeVertices 1 -mergeVertexTolerance 0.0001 -smoothingAngle 120 -miteringAngle 180 -angleTolerance 180 -ch 1`;
+
+	}
+	
+	select -addFirst $iT_createNode;
+	setToolTo $iT_tool;
+
+//------------------------ Add Noob proof heads up message ---------------------------------
+	string $msg = "";
+	
+	if ($iT_command == "Merge")
+		$msg = "LMB/MMB: Merge tolerance";
+	else
+		$msg = "LMB : Offset | MMB : Segements";
+		
+	headsUpMessage 
+		-time 5.0
+		-verticalOffset -64 
+		-horizontalOffset (size($msg) / -2) 
+		$msg;
+}
+
+//----------------------- 'Press' Procedure for draggerContext -----------------------------
+
+global proc froTools_iT_press()
+{
+	// draggerContext declarations
+	global	float		$iT_anchor[];
+	
+	// draggerContext definitions
+	int			$iT_btn		= `draggerContext -query -button froToolsInteractiveTool`;
+	float		$iT_pos[]	= `draggerContext -query -anchorPoint froToolsInteractiveTool`;	
+	string	$iT_mod		= `draggerContext -query -modifier froToolsInteractiveTool`;
+	
+					$iT_anchor	= `draggerContext -query -anchorPoint froToolsInteractiveTool`;
+	
+	global	int			$newCommand;	
+	global	string	$selectExtrudeTool;
+	global	string	$selectMergeTool;
+					
+	global	string	$iT_createNode[];
+	global	string	$iT_selection[];
+	global	string	$iT_newNode[];
+	global	string	$nodeType;
+									
+					$iT_selection		= `ls -sl -fl`;
+					$iT_newNode[0]	= $iT_selection[0];
+					$nodeType 			= `nodeType $iT_createNode`;
+			
+	// Translation Settings
+	global	string	$transValue[];	
+
+	// Find attribute and it's value.	
+	global	float		$iT_value[];
+	global	string	$iT_attr[];
+	clear	$iT_attr;
+
+	
+	// mergeVtx Press Definitions
+	if ( $nodeType == "polyMergeVert" )
+	{
+		if ( $iT_mod == "none" )
+			if ( $iT_btn == 1 || $iT_btn == 2 )
+				 $transValue	= {".d"};
+	}
+	
+
+	// polyBevel Press Definitions
+
+	else if ( $nodeType == "polyBevel" )
+	{
+		if ( $iT_mod == "none" )
+			if ( $iT_btn == 1 )
+				$transValue = {".o"};
+		else
+			$transValue = {".segments"};
+	}
+
+	else
+		$iT_attr[0]		= "";
+
+	// Universal Value Attribute
+	int	$i;
+	
+	for ($i = 0; $i < size($transValue); $i++)
+		$iT_attr[$i] = $transValue[$i];		
+	
+	if ( $iT_attr[0] != "" )
+	{
+		for ( $i = 0; $i < size($iT_attr); $i++)
+		{
+			$iT_value[$i]		= `getAttr ($iT_newNode[0] + $iT_attr[$i])`;
+			setAttr ($iT_newNode[0] + $iT_attr[$i]) ($iT_value[$i]);
+		}
+	}
+
+	froToolsToggleInteractiveToolHUD; // create HUD to see drag values.
+}
+
+//----------------------- 'Drag' procedure for draggerContext ------------------------------
+
+global proc froTools_iT_drag()
+{
+	// draggerContext declarations
+	global	float		$iT_anchor[];
+	
+	// draggerContext definitions
+	int			$iT_btn		= `draggerContext -query -button froToolsInteractiveTool`;	
+	float		$iT_pos[]	= `draggerContext -query -dragPoint froToolsInteractiveTool`;
+	string	$iT_mod		= `draggerContext -query -modifier froToolsInteractiveTool`;
+	
+	// camera declarations
+	global int 		$camAxis[];
+	global int		$camDragOnAxis;
+	
+	// Determine NODE
+	global	string	$iT_createNode[];
+	global	string	$iT_selection[];
+	global	string	$iT_newNode[];
+	global	string	$nodeType;
+	global	string	$newNodeType;
+				
+					$newNodeType = `nodeType $iT_newNode[0]`;
+		
+	// Find attribute and it's value.
+	global	float		$divisor;
+	global	float		$dragAnchor;
+	global	float		$distValue;
+	global	float		$iT_value[];
+	global	string	$iT_attr[];
+			clear	$iT_attr;
+	
+	// Translation Settings
+	global	string	$transValue[];	
+			
+	// get distance from camera and view plane information
+	froTools_iT_cameraPlane;
+	
+	
+	// mergeVtx Drag Definitions
+	if ( $nodeType == "polyMergeVert" )
+	{
+		if ( $iT_btn == 1 || $iT_btn == 2) // mergeVtx BUTTON 1
+			if ( $iT_mod == "none" )
+				$transValue	= {".d"};
+	}
+				
+
+	// polyBevel Drag Definitions
+	else if ( $nodeType == "polyBevel" )
+	{
+		if ( $iT_mod == "none" )
+			if ( $iT_btn == 1)
+				$transValue = {".o"};
+			else
+				$transValue = {".segments"};
+	}				
+
+	else
+		$iT_attr[0]		= "";
+
+	// Universal Value Attribute
+	int	$i;
+	
+	for ($i = 0; $i < size($transValue); $i++)
+			$iT_attr[$i] = $transValue[$i];			
+
+	undoInfo -swf off;	
+
+	if ( $iT_btn == 1 || $iT_btn == 2 )
+	{
+		for ( $i = 0; $i < size($iT_attr); $i++)
+		{
+			if (size($iT_attr) > 1 )
+				$dragAnchor	= ($iT_pos[$i] - $iT_anchor[$i]);
+			else
+				$dragAnchor	= ($iT_pos[$camDragOnAxis] - $iT_anchor[$camDragOnAxis]);
+				
+			if ( $nodeType == "polyMergeVert" )
+			{
+				//if ( $iT_btn == 2 )
+				//	$distValue	= `max 0.0001 ($iT_value[$i] + ($dragAnchor / 10))`;
+				//else
+				$distValue	= `max 0.0001 ($iT_value[$i] + ($dragAnchor))`;
+			}
+			
+			else if ( $nodeType == "polyBevel" )
+			{
+				if ($iT_btn == 1)
+				
+					if(`currentUnit -query -linear` == "cm") //cm
+						$distValue	= `clamp 0 1 ($iT_value[$i] + ($dragAnchor / 15))`;
+					else //meters
+						$distValue	= `clamp 0 1 ($iT_value[$i] + ($dragAnchor / 1500))`;
+
+				else
+					$distValue	= `clamp 1 4 ($iT_value[$i] + $dragAnchor)`;
+
+			}
+			else
+				$distValue	= ($iT_value[$i] + $dragAnchor);
+					
+			if (`snapMode -q -grid` == 1)
+			{
+				if ( $nodeType == "polyBevel" )
+					$distValue	= `clamp 0 1 ((trunc(($iT_value[$i] + $dragAnchor) * 10)) / 10)`;
+				else
+					$distValue	= (trunc(($iT_value[$i] + $dragAnchor) * 2)) / 2;
+			}
+				
+			if ( $iT_attr[0] != "" )
+				setAttr ($iT_newNode[0] + $iT_attr[$i]) ($distValue);
+
+		}
+	}
+	
+	refresh;
+	undoInfo -swf on; 
+}	
+
+//----------------------- 'Release' procedure for draggerContext ---------------------------
+
+global proc froTools_iT_release()
+{
+		headsUpDisplay -rem froToolsInteractiveToolHUD;
+}
+
+//----------------------- interactiveTool draggerContext setup -----------------------------
+
+global proc froToolsInteractiveToolSetup()
+{
+	if (`draggerContext -exists froToolsInteractiveTool`) 
+		deleteUI froToolsInteractiveTool;
+	{
+		draggerContext
+			-pressCommand	"froTools_iT_press"
+			-dragCommand	"froTools_iT_drag"
+			-releaseCommand "froTools_iT_release"
+			-space				"object"
+			-projection		"objectViewPlane"
+			-cursor				"crossHair"
+			froToolsInteractiveTool;
+	}
+}
+
+
+//---------------------- Interactive Tool procedure ---------------------------------------
+
+global proc froTools_iT_cleanNode()
+{
+	string $selNode[]	= `ls -sl -fl`;
+
+	for ( $node in $selNode )
+	{
+		string $nt = `nodeType $node`;
+		if ($nt != "mesh")
+			select -d $node;
+	}
+}
+
+global proc float froToolsHKNormAng(float $Angle)
+{
+	float	$Angle;
+	int		$Piece = $Angle / 360;
+  			$Angle = $Angle - $Piece * 360;
+ 	
+	if($Angle < 0)
+  		$Angle = 360 + $Angle;
+	
+ 	return $Angle;
+} 
+
+global proc froTools_iT_pointAverage(string $iT_selection[])
+{
+	// iT_pointAverage declarations
+	global	float	$pA_pointPosition[];
+	global 	float	$pA_avgPosition[];	
+	global	string	$pA_selection[];
+	
+	ConvertSelectionToVertices;
+	
+	for ( $node in $iT_selection )
+	{
+		string $nt = `nodeType $node`;
+		if ($nt != "mesh") select -d $node;
+		$pA_selection = `ls -sl -fl`;
+	}	
+
+	clear $pA_avgPosition;	
+	
+	int	$noOfVerts	= `size $pA_selection`;	
+	int	$count;
+	
+	for ($count = 0; $count < $noOfVerts; $count++)
+	{
+		$pA_pointPosition = `pointPosition -w $pA_selection[$count]`;
+	
+		$pA_avgPosition[0] = $pA_avgPosition[0] + $pA_pointPosition[0];
+		$pA_avgPosition[1] = $pA_avgPosition[1] + $pA_pointPosition[1];
+		$pA_avgPosition[2] = $pA_avgPosition[2] + $pA_pointPosition[2];
+	}
+
+		$pA_avgPosition[0] = $pA_avgPosition[0] / $noOfVerts;
+		$pA_avgPosition[1] = $pA_avgPosition[1] / $noOfVerts;
+		$pA_avgPosition[2] = $pA_avgPosition[2] / $noOfVerts;
+		
+//		print $pA_avgPosition;
+}
+
+global proc	froTools_iT_cameraPlane()
+{
+	// iT_cameraPlane declarations
+	global int		$camDragOnAxis;	
+	global int 		$camAxis[];
+	global float	$camPosition[3];	
+	global string	$camName;
+	
+			$panel			= `getPanel -wf`;
+    		$camName		= `modelPanel -q -camera $panel`; // get camera
+    		$camPosition	= `xform -q -t -ws $camName`; // get camera's coordinates
+    
+	float 	$camRotation[]	= `xform -q -ro $camName`; // get camera's rotation
+      		$camRotation[0]	= froToolsHKNormAng($camRotation[0]); // camera's X rotation 
+           	$camRotation[1]	= froToolsHKNormAng($camRotation[1]); // camera's Y rotation
+        
+ 	if	(($camRotation[0] > 45 && $camRotation[0] < 135) || ($camRotation[0] > 225 && $camRotation[0] < 315)) 
+	{
+		$camAxis			= {0,1,0}; 	// xz axis
+		if ( $camRotation[1] < 45 || $camRotation[1] > 135 && $camRotation[1] < 225 || $camRotation[1] > 315)
+			$camDragOnAxis	= "0"; // x
+		else
+			$camDragOnAxis	= "2"; // z
+	}
+	else if ( $camRotation[1] < 45 || ($camRotation[1] > 135 && $camRotation[1] < 225) || $camRotation[1] > 315) 
+	{
+		$camAxis			= {0,0,1};	// xy axis
+		$camDragOnAxis		= "0"; // x
+	}
+	else
+	{
+		$camAxis			= {1,0,0};	// yz axis
+		$camDragOnAxis		= "2"; // z
+	}
+}
+
+global proc froTools_iT_distFromCamera()
+{
+	// iT_distFromCamera declarations
+	global	float	$distFromCamera;
+	global	float	$difference[]; 	
+	//iT_cameraPlane declarations
+	global	float	$camPosition[];	
+	global	string	$camName;
+	// iT_pointAverage declarations
+	global	float	$pA_avgPosition[];	
+	// Universal declarations
+	global	string	$iT_selection[];
+
+	$iT_selection = `ls -sl -fl`;
+	
+	iT_pointAverage($iT_selection);
+	
+	if (`camera -q -o $camName` == 1)
+	{
+		string 	$camShape[]		= `listRelatives -s $camName`;
+		float	$camOrthoWidth	= `getAttr ($camShape[0] + ".orthographicWidth")`;
+		$distFromCamera = 1; //$camOrthoWidth / 10;
+		//draggerContext -e -pr "objectViewPlane" interactiveTool;
+	}
+	else
+	{
+		int $i;
+	
+		for ($i = 0; $i < size($pA_avgPosition); $i++)
+		$difference[$i] = `pow ($pA_avgPosition[$i] - $camPosition[$i]) 2`;
+		
+		$distFromCamera	= sqrt ($difference[0] + $difference[1] + $difference[2]);
+		$distFromCamera	= $distFromCamera;
+		//draggerContext -e -sp "world" interactiveTool;
+	}
+		
+	select -r $iT_selection;			
+}
+
+
+//--------------------- Interactive tool HUD ---------------------------------------
+
+global proc float[] froToolsInteractiveHUDCommand ()
+{
+	global	string	$iT_attr[];
+	global	string	$iT_newNode[];
+	
+	float $iT_HUDValue[3];
+	
+	for ($i = 0; $i < size($iT_attr); $i++)
+		$iT_HUDValue[$i] = `getAttr ($iT_newNode[0] + $iT_attr[$i])`;
+	
+	return $iT_HUDValue;
+}
+
+global proc froToolsCreateInteractiveToolHUD()
+{
+	headsUpDisplay
+		-section          8
+		-block            0
+		-blockSize        "small"
+		-label            "Value: "
+		-labelFontSize    "large"
+		-dataFontSize	  	"large"
+		-command          "froToolsInteractiveHUDCommand"
+		-attachToRefresh
+		-decimalPrecision 5
+	froToolsInteractiveToolHUD;
+}
+
+global proc froToolsToggleInteractiveToolHUD ()
+{
+
+    if (`headsUpDisplay -ex froToolsInteractiveToolHUD`)
+			headsUpDisplay -rem froToolsInteractiveToolHUD;
+    else 
+        froToolsCreateInteractiveToolHUD;	
+}
+
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+######                                   ##   
+##                                       ##   
+##      ##  ##  #####    ####   ##  ##  ######
+##      ##  ##  ##  ##  ##  ##  ## ###   ##   
+#####    ####   ##  ##  ##  ##  ###      ##   
+##        ##    ##  ##  ##  ##  ##       ##   
+##       ####   ##  ##  ##  ##  ##       ##   
+##      ##  ##  ##  ##  ##  ##  ##       ##   
+######  ##  ##  #####    ####   ##        ####
+                ##                            
+                ##                            
+                ##                            
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+global proc froToolsOpenTexture(string $type)
+{
+	if($type != "")
+	{
+		//get the current image (from 0 to N-1) & step by 2 (shader+file)
+		int $imgNB = `textureWindow -q -imageNumber "polyTexturePlacementPanel1"`;
+
+		string $temp[] = `textureWindow -q -imageNames "polyTexturePlacementPanel1"`;
+		//print $temp[$imgNB]; //name of current file/shader
+		
+		//tokenize name
+		string $buffer[];
+		tokenize $temp[$imgNB] " " $buffer;
+		if (size($buffer) == 0) return;
+
+		string $currentFile = $buffer[size($buffer) - 1];
+
+		waitCursor -state on;
+		source AEfileTemplate.mel;
+		string $mats[];
+		string $files[];
+		string $sel[]=`ls -sl -tr -l`;
+
+		for ($node in $sel)
+		{
+			string $shapes[] = `listRelatives -f -s -ni $node`;
+			for ($shape in $shapes)
+			{
+				string $sgs[] = `listConnections -d 1 -s 0 -p 0 -t "shadingEngine" $shape`;
+				for ($sg in $sgs)
+				{
+					if (`connectionInfo -id ($sg+".surfaceShader")`)
+					{
+						string $matCon = `connectionInfo -sfd ($sg+".surfaceShader")`;
+						$mats[`size($mats)`] = `match "[^.]*" $matCon`;
+					}
+				}
+			}
+		}
+		
+		$mats = `stringArrayRemoveDuplicates $mats`;
+		
+		for ($mat in $mats)
+		{
+			string $nodes[] =`listHistory $mat`;
+			for ($node in $nodes)
+			{
+				if (`nodeType $node`=="file" || `nodeType $node`=="psdFileTex")
+				$files[`size($files)`]=$node;
+			}
+		}
+		
+		$files = `stringArrayRemoveDuplicates $files`;
+		int $count=0;
+		int $count2=0;
+		
+		for ($file in $files)
+		{
+			if (`attributeQuery -node $file -ex fileTextureName`)
+			{
+				string $theFile = `getAttr ($file+".fileTextureName")`;
+				if (`filetest -r $theFile`)
+				{
+					//tets if file = $imgNB
+					if($file == $currentFile && $type == "current")
+					{
+						if(`textField -q -fi froTools_PhotoshopPath` != "")
+						{
+							string $txt = `getAttr ($file + ".fileTextureName")`;
+							$txt = substituteAllString($txt, "/", "\\");
+							system ("start \"" + `textField -q -fi froTools_PhotoshopPath` + "\"" + " \"" + $txt + "\"");
+						}
+						else
+							AEfileTextureEditCmd ($file+".fileTextureName");
+							
+						$count++;
+					}
+					else if($type == "all")
+					{
+						if(`textField -q -fi froTools_PhotoshopPath` != "")
+						{
+							string $txt = `getAttr ($file + ".fileTextureName")`;
+							$txt = substituteAllString($txt, "/", "\\");
+							system ("start \"" + `textField -q -fi froTools_PhotoshopPath` + "\"" + " \"" + $txt + "\"");
+						}
+						else
+							AEfileTextureEditCmd ($file+".fileTextureName");
+							
+						$count++;
+					}
+				}
+				else $count2++;
+			}
+		}
+		
+		if ($count2) print ("Launched "+$count+" texture"+ ($count > 1 ? "s":"")+", skipped "+$count2 +" texture"+ ($count2>1?"s":"")+"\n");
+		else print ("Launched "+$count+" texture"+ ($count > 1 ? "s":"")+"\n");
+			
+		waitCursor -state off;
+
+	}
+}
+
+//===========================
+//EXPORT OBJ
+//===========================
+global proc froToolsExportOBJ() 
+{
+	// load ObjExport plugin if nessacary...
+	if (!`pluginInfo -query -l objExport`) 
+	{
+		loadPlugin objExport;
+		pluginInfo -edit -autoload true objExport;
+	}
+	
+	///////////////EXPORT
+	if (!`checkBox -q -v froTools_objCheck`) //combined
+	{
+		if(`textField -q -fi froTools_EXPORTpath` != "")
+		{
+			string $objOutname = "";
+			
+			if(`textField -q -fi froTools_OBJname` != "")
+				$objOutname = (`textField -q -fi froTools_EXPORTpath` + (`textField -q -fi froTools_OBJname`) + ".obj");
+			else
+				$objOutname = (`textField -q -fi froTools_EXPORTpath` + "/combined.obj");
+			
+			
+			file -op "groups=0;ptgroups=0;materials=0;smoothing=0;normals=1" 
+				-f //force
+				-chn 1 //channels
+				-sh 0 //shaders
+				-exp 0 //expressions
+				-con 0 //constraint
+				-ch 0 //construction history
+				-typ "OBJexport" 
+				-pr 
+				-es 
+				$objOutname;
+				
+			print( "Exported : " + `textField -q -fi froTools_OBJname` + ".obj" );
+		}
+	} 
+	else  //individual
+	{
+		if(`textField -q -fi froTools_EXPORTpath` != "")
+		{
+			// individually...
+			string $objSel[] = `ls -sl`;
+			string $objItem;
+			string $objFolder = `textField -q -fi froTools_EXPORTpath`;
+			
+			sysFile -md $objFolder;
+			
+			select -cl;
+
+			for ($objItem in $objSel) 
+			{
+				select -r $objItem;
+				float $OriginalLoc[];	
+				string $objOutname = ($objFolder + "/" + $objItem + ".obj");
+				$objOutname = substituteAllString($objOutname, "|", "");
+				
+
+				//Keep original location ?
+				if(`checkBox -q -v froTools_checkOBJcenterPivot`)
+				{
+					if(`checkBox -q -v froTools_checkOBJoriginalLoc`)
+					{
+						select -r $objItem;
+						$temp = `xform -q -piv -ws $objItem`;
+						$OriginalLoc[0] = $temp[0];
+						$OriginalLoc[1] = $temp[1];
+						$OriginalLoc[2] = $temp[2];
+					}
+						
+					froFBXcenterPiv($objItem);
+				}
+			
+				file -op "groups=0;ptgroups=0;materials=0;smoothing=0;normals=1" 
+					-f //force
+					-chn 1 //channels
+					-sh 0 //shaders
+					-exp 0 //expressions
+					-con 0 //constraint
+					-ch 0 //construction history
+					-typ "OBJexport" 
+					-pr //preserve reference
+					-es //export selected
+					$objOutname;
+					
+					
+				if(`checkBox -q -v froTools_checkOBJcenterPivot`)
+				{	
+					if(`checkBox -q -v froTools_checkOBJoriginalLoc`)
+						move -r $OriginalLoc[0] $OriginalLoc[1] $OriginalLoc[2] $objItem;
+				}
+				
+				select -r $objItem;
+					
+				print( "Exported : " + $objItem + ".obj");
+			}
+		}		
+	}		
+}
+
+
+global proc froToolsExportOBJuv() 
+{
+	// load ObjExport plugin if nessacary...
+	if (!`pluginInfo -query -l objExport`) 
+	{
+		loadPlugin objExport;
+		pluginInfo -edit -autoload true objExport;
+	}
+	
+	string $sel[] = `ls -sl`;
+	
+	for($obj in $sel)
+	{
+		//query lightmap channel name
+		string $lightmap;
+		if(`textField -q -fi froTools_OBJUVname` != "")
+			$lightmap = `textField -q -fi froTools_OBJUVname`;
+		else
+			$lightmap = "lightmap";
+		
+	
+		//select and duplicate the mesh
+		string $orimesh = $obj;
+		
+		//query if there is a lightmap channel
+		int $uvok = 0;
+		int $indices[] = `polyUVSet -q -allUVSetsIndices $orimesh`;
+		for( $i in $indices )
+		{
+				string $name = `getAttr ($orimesh+".uvSet["+$i+"].uvSetName")`;
+				if($name == "lightmap")
+					$uvok = 1;
+		}
+		
+		if($uvok)
+		{
+			select -r $orimesh;
+			polyUVSet -currentUVSet -uvSet "lightmap";
+			
+			//duplicate mesh
+			string $duplimesh_temp[] = `duplicate $orimesh`;
+			string $duplimesh = $duplimesh_temp[0];
+			rename $duplimesh ($orimesh + "_lightmap");
+			$duplimesh = ($orimesh + "_lightmap");
+			string $uvsetend;
+			
+			//select the set the current UV the dafualt one (map1)
+			select -r $duplimesh;
+			$indices = `polyUVSet -q -allUVSetsIndices $duplimesh`;
+			for( $i in $indices )
+			{
+					string $name = `getAttr ($duplimesh+".uvSet["+$i+"].uvSetName")`;
+					if($i = 0)
+						$uvsetend = $name;
+			}
+			polyUVSet -delete -uvSet $lightmap;
+			
+			//select and transfert the UVs
+			select -r $orimesh;
+			select -add $duplimesh;
+			transferAttributes 
+				-transferPositions 0 -transferNormals 0 
+				-transferUVs 1 -sourceUvSet $lightmap
+				-targetUvSet $uvsetend 
+				-transferColors 0 -sampleSpace 5 
+				-sourceUvSpace $lightmap -targetUvSpace $uvsetend 
+				-searchMethod 3-flipUVs 0 
+				-colorBorders 1 ;
+				
+			//center pivot and move to ori
+			//needed because if the mesh is too far away, the simple ambiant
+			//occlusion generator of xnormal will crash and render a blank map
+			select -r $duplimesh; //we only move the lightmap mesh
+			froToolsCenterPivots();
+			move -rpr 0 0 0;
+			
+			//export
+			if(`textField -q -fi froTools_EXPORTpath` != "")
+			{
+				string $objItem = $duplimesh;
+				string $objFolder = `textField -q -fi froTools_EXPORTpath`;
+				
+				sysFile -md $objFolder;
+				
+				select -cl;
+
+				select -r $objItem;
+				string $objOutname = ($objFolder + "/" + $objItem + ".obj");
+				$objOutname = substituteAllString($objOutname, "|", "");
+			
+				file -op "groups=0;ptgroups=0;materials=0;smoothing=0;normals=1" 
+					-f //force
+					-chn 1 //channels
+					-sh 0 //shaders
+					-exp 0 //expressions
+					-con 0 //constraint
+					-ch 0 //construction history
+					-typ "OBJexport" 
+					-pr //preserve reference
+					-es //export selected
+					$objOutname;
+					
+				print( "Exported : " + $objItem + ".obj");
+			}
+			
+			//clear the scene, we don't need the mehs anymore
+			delete $duplimesh;
+			
+		} //if uvok end
+	} //for end
+}
+
+//FBX Functions
+global proc froExportFBX()
+{
+    string $sel[] = `ls -sl`;
+	int $sizeSel = size($sel);  
+    string $thisObj;  
+	
+	//export settings
+	string $path = `textField -q -fi froTools_EXPORTpath`;
+	if($path == "")
+	{
+		error("FBX : The export path is empty, export aborted.");
+		return;
+	}
+	
+    if (size($sel) == 0)
+        warning("Nothing is selected");
+	else
+	{
+		//========================
+		//FBX Settings
+		//========================
+		float $fbxv = `pluginInfo -q -version fbxmaya`;
+		
+		//mesh settings
+		FBXExportSmoothingGroups -v `checkBox -q -v 		froTools_checkFBXsmoothgrp`;
+		FBXExportHardEdges -v `checkBox -q -v 				froTools_checkFBXsplit`;
+		FBXExportQuickSelectSetAsCache -v `checkBox -q -v  	froTools_checkFBXsels`;
+		FBXProperty Export|IncludeGrp|Geometry|AnimationOnly -v 0; //animation only = convert to null
+		FBXExportInputConnections -v `checkBox -q -v 		froTools_checkFBXconnections`;
+		FBXExportSmoothMesh -v `checkBox -q -v 				froTools_checkFBXsmoothmsh`;
+		FBXExportTangents -v `checkBox -q -v 				froTools_checkFBXbinormal`;
+		FBXExportConstraints -v 0;
+		
+		//animation settings disabled
+		FBXExportBakeComplexAnimation -v 0;		
+		
+		
+		//Version specific
+		if($fbxv >= 2012)
+			FBXExportTriangulate -v `checkBox -q -v 			froTools_checkFBXtrifbx`;
+			
+		if($fbxv >= 2013)
+			FBXExportSkeletonDefinitions -v 0;
+		else
+			FBXExportCharacter -v 0;
+		
+		if($fbxv >= 2014)
+			FBXExportReferencedAssetsContent -v `checkBox -q -v froTools_checkFBXreference`;
+		else
+			FBXExportReferencedContainersContent -v `checkBox -q -v froTools_checkFBXreference`;
+		
+		
+		
+		//others settings (cameras, lights, and so on)
+		FBXExportCameras -v 0;
+		FBXExportLights -v 0;
+		
+		//Version (deprecated command ?)
+		//FBXExportFileVersion FBX201100;
+		//   FBX201400
+		//   FBX201300
+		//   FBX201200
+		//   FBX201100
+		//   FBX201000
+		//   FBX200900
+		//   FBX200611
+		
+		if(`optionMenu -q -v exportlist8_menu` == "2009")
+			FBXExportFileVersion FBX200900;
+		else if(`optionMenu -q -v exportlist8_menu` == "2010")
+			FBXExportFileVersion FBX201000;
+		else if(`optionMenu -q -v exportlist8_menu` == "2011")
+			FBXExportFileVersion FBX201100;
+		else if(`optionMenu -q -v exportlist8_menu` == "2012")
+			FBXExportFileVersion FBX201200;
+		else if(`optionMenu -q -v exportlist8_menu` == "2013")
+			FBXExportFileVersion FBX201300;
+		else if(`optionMenu -q -v exportlist8_menu` == "2014")
+			FBXExportFileVersion FBX201400;
+		
+		
+		//========================
+		//Perform Export
+		//========================
+		
+		if(`checkBox -q -v froTools_checkFBXindividual`)
+		{
+			//perform export for each object
+			for ($thisObj in $sel)
+			{			
+				select $thisObj;     
+				float $OriginalLoc[];			
+				$fullpath = $path + "/" + $thisObj + ".fbx";
+
+				//Keep original location ?
+				if(`checkBox -q -v froTools_checkFBXcenterPivot`)
+				{
+					if(`checkBox -q -v froTools_checkFBXoriginalLoc`)
+					{
+						select $thisObj;
+						$temp = `xform -q -piv -ws $thisObj`;
+						$OriginalLoc[0] = $temp[0];
+						$OriginalLoc[1] = $temp[1];
+						$OriginalLoc[2] = $temp[2];
+					}
+						
+					froFBXcenterPiv($thisObj);
+				}
+				
+				//Check if we want to triangulate with maya
+				if(`checkBox -q -v froTools_checkFBXtrimaya`)
+				{
+					//triangulate
+					select $thisObj;
+					polyTriangulate;
+				}
+				
+				
+			//export
+			FBXExport -f $fullpath -s; 
+				
+				//Undo triangulate
+				if(`checkBox -q -v froTools_checkFBXtrimaya`)
+				{		
+					select $thisObj;
+					//delete the tri node
+					string $Name = $thisObj;
+					string $FF[] = `listRelatives $Name`;
+					string $GG[] = `listConnections $FF[0]`;
+					select -r $GG[1]; 
+					delete;
+					
+					//reselect the object
+					select $thisObj;
+				}
+				
+				
+				if(`checkBox -q -v froTools_checkFBXcenterPivot`)
+				{	
+					if(`checkBox -q -v froTools_checkFBXoriginalLoc`)
+						move -r $OriginalLoc[0] $OriginalLoc[1] $OriginalLoc[2] $thisObj;
+				}
+				
+				select $thisObj;
+				//feedback
+				print("FBX : \"" + $thisObj + "\" exported.");
+			
+			} //end for loop
+		}
+		else //export everything in one file
+		{
+			string $fullpath = "";
+			
+			if(`textField -q -fi froTools_FBXname` != "")
+				$fullpath = ($path + `textField -q -fi froTools_FBXname` + ".fbx");
+			else
+				$fullpath = $path + "/combined.fbx";
+
+			//export
+			FBXExport -f $fullpath -s; 
+
+			//feedback
+			if(`textField -q -fi froTools_FBXname` != "")
+				print("FBX : \"" + `textField -q -fi froTools_FBXname` + ".fbx\" exported.");
+			else
+				print("FBX : \"combined.fbx\" exported.");
+		}
+	} //end else
+}
+
+
+//update the UI with the path
+global proc froSetExportPath()
+{
+	string $path[] = `fileDialog2 -fm 3 -cap "Select Export Folder"`;
+	if($path[0] != "") //update only if valid, otherwise keep blank/current path
+	{
+		string $filename = $path[0] + "/";    
+		textField -e -fi $filename froTools_EXPORTpath; //update UI field
+		
+		optionVar -stringValue "froToolsExportPath" $filename;
+	}
+}
+
+global proc froFBXcenterPiv(string $objSelection)
+{
+	select -r $objSelection;
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0;
+	$Pos = `xform -q -piv -ws`;
+	move -a  (-1 *  $Pos[0]) (-1*$Pos[1] ) (-1*$Pos[2]) ;
+}
+
+//get and update range slider time
+global proc froFBXgettime()
+{
+	int $range[];
+	$range[0] = `playbackOptions -q -minTime`;
+	$range[1] = `playbackOptions -q -maxTime`;
+	intField -e -v $range[0] checkFBXrange1;
+	intField -e -v $range[1] checkFBXrange2;
+}
+
+
+
+
+/*
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+##  ##  ##  ##        
+##  ##  ##  ##        
+##  ##  ##  ##   #####
+##  ##  ##  ##  ##    
+##  ##  ##  ##  ##    
+##  ##  ##  ##   #### 
+##  ##  ##  ##      ##
+##  ##   ####       ##
+ ####     ##    ##### 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////														
+*/
+
+
+global proc froToolsCopyUVWindow()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) == 2)
+	{
+		// if Window exists already delete it, so you cant call multiple windows
+		if (`window -exists froWindowUVset`) 
+		{
+			deleteUI froWindowUVset;
+			windowPref -remove froWindowUVset;
+		}
+
+		int $winw = 300;
+		int $winh = 200;
+		
+		//make the base window
+		window 
+			-t "froTools - Copy UVset" 
+			-widthHeight $winw $winh
+			-minimizeButton false
+			-maximizeButton false
+			-sizeable false
+			froWindowUVset;
+			
+			
+		//content of the window
+		columnLayout uv_col_main;
+			gridLayout -numberOfColumns 1 -cellHeight 26 -cellWidth ($winw);
+				text -l "Copy an UVset from one mesh to another one" -align "center";
+			setParent ..;
+			
+			gridLayout -numberOfColumns 4 -cellHeight 26 -cellWidth ($winw / 4);
+				text -l "Source : " -align "right";
+				text -l $sel[0] -align "left" frot_uv_mesh1;
+				
+				text -l "Destination : " -align "right";
+				text -l $sel[1] -align "left" frot_uv_mesh2;
+			setParent ..;
+			
+			gridLayout -numberOfColumns 2 -cellHeight 96 -cellWidth ($winw / 2);
+				textScrollList 
+					-sc "froToolsCopyUVlistSelected 1"
+					-allowMultiSelection false 
+					frotuv_list_1;
+					
+				textScrollList 
+					-sc "froToolsCopyUVlistSelected 2"
+					-allowMultiSelection false 
+					frotuv_list_2;
+			setParent ..;
+			
+			//setup list
+			froToolsCopyUVlist($sel[0], "frotuv_list_1");
+			froToolsCopyUVlist($sel[1], "frotuv_list_2");
+			
+			textScrollList -e -selectItem "map1" frotuv_list_1;
+			textScrollList -e -selectItem "map1" frotuv_list_2;
+			
+			gridLayout -numberOfColumns 2 -cellHeight 26 -cellWidth ($winw / 2);
+				text -l "Method : " -align "right";
+				$frotuv_optlist = `optionMenu
+					-label "" 
+					-w ($winw / 1.2) -h 24
+					-ann ""
+					-cc "" 
+					frotuv_optlist`;
+					menuItem -p $frotuv_optlist -l "Local" frot_uvopt_1;
+					menuItem -p $frotuv_optlist -l "Topology" frot_uvopt_2;
+				optionMenu -e -sl 1 frotuv_optlist;
+				
+				
+				button
+					-l "Cancel"
+					-bgc 0.35 0.25 0.25
+					-c "deleteUI froWindowUVset; windowPref -remove froWindowUVset";
+					
+				button
+					-l "Apply"
+					-bgc 0.25 0.35 0.25
+					-c "froToolsCopyUV";
+			setParent ..;
+			
+			text -l "";
+			
+		setParent ..;
+		
+		
+		//show the window
+		showWindow froWindowUVset;
+		
+		//place the window
+		int $p[2] = froToolsScreenResolution();
+		$p[0] = ($p[0] / 2) - ($winh / 2);
+		$p[1] = ($p[1] / 2) - ($winw / 2);
+		window -e -tlc $p[0] $p[1] -mnb 1 froWindowUVset;
+		
+		print "";
+	}
+	else
+		error "You need to select 2 objects.";
+}
+
+global proc froToolsCopyUVlist(string $mesh, string $list)
+{
+	int $nb[] = `polyUVSet -q -allUVSetsIndices $mesh`;
+	
+	for($i = 0; $i < (size($nb) + 1); $i++)
+	{
+		//update UI
+		textScrollList -e -append `getAttr ($mesh+".uvSet["+$i+"].uvSetName")` $list;
+	}
+}
+
+global proc froToolsCopyUVlistSelected(int $ls)
+{
+	if($ls == 1)
+	{
+		string $mesh = `text -q -l frot_uv_mesh1`;
+		string $uv[] = `textScrollList -q -selectItem frotuv_list_1`;
+		
+		//set uv
+		polyUVSet -currentUVSet -uvSet $uv[0] $mesh;
+	}
+	else
+	{
+		string $mesh = `text -q -l frot_uv_mesh2`;
+		string $uv[] = `textScrollList -q -selectItem frotuv_list_2`;
+		
+		//set uv
+		polyUVSet -currentUVSet -uvSet $uv[0] $mesh;
+	}
+}
+
+
+global proc froToolsCopyUV()
+{
+	//get infos
+	string $mesh_start = `text -q -l frot_uv_mesh1`;
+	string $mesh_end = `text -q -l frot_uv_mesh2`;
+	
+	string $temp[] = `polyUVSet -q -currentUVSet $mesh_start`;
+	string $uv_start = $temp[0];
+	
+	$temp = `polyUVSet -q -currentUVSet $mesh_end`;
+	string $uv_end = $temp[0];	
+	
+	//search method
+	int $space;
+	if(`optionMenu -e -sl 1 frotuv_optlist` == "local")
+		$space = 1; //local
+	else
+		$space = 5; //topology
+		
+	//select meshes for transfert
+	select -r $mesh_start;
+	select -add $mesh_end;
+
+		
+	//Transfert
+	transferAttributes
+		-transferPositions 0 
+		-transferNormals 0 
+		-transferUVs 1 
+		
+		-sourceUvSet $uv_start
+		-targetUvSet $uv_end 
+		
+		-transferColors 0 
+		-sampleSpace $space
+		
+		-sourceUvSpace $uv_start 
+		-targetUvSpace $uv_end
+		
+		-searchMethod 3 //closest to point
+		
+		-flipUVs 0 
+		-colorBorders 1;
+	
+	
+	//finished, kill the window
+	if (`window -exists froWindowUVset`) 
+	{
+		deleteUI froWindowUVset;
+		windowPref -remove froWindowUVset;
+	}
+}
+
+
+// snapUVToGrid.mel
+//	by Naughty (naughty_genepool@hotmail.com)
+//	http://www.naughtynathan.supanet.com/mel.htm
+global proc froToolsSnapUVToGrid()
+{
+	float $gridSpace = `textureWindow -q -sp polyTexturePlacementPanel1`;
+	float $gridSubD = `textureWindow -q -d polyTexturePlacementPanel1`;
+	float $gridSize =($gridSpace/$gridSubD);
+
+	//print ("grid size: " + $gridSize + "\n");
+
+	string $selUVs[] = `filterExpand -fullPath 1 -expand 1 -sm 35`;
+
+	if(!size($selUVs))
+		error "No UVs selected!\n";
+
+	for ($UV in $selUVs)
+	{
+		float $UVPos[] = `polyEditUV -r 0 -q -u $UV`;
+		//print ("U position: " + $UVPos[0] + "\n");
+		//print ("V position: " + $UVPos[1] + "\n");
+
+		$UVPos[0] = $gridSize * ( int( ( $UVPos[0] + $gridSize / 2.0 * `sign $UVPos[0]` ) / $gridSize ) );
+		$UVPos[1] = $gridSize * ( int( ( $UVPos[1] + $gridSize / 2.0 * `sign $UVPos[1]` ) / $gridSize ) );
+
+		polyEditUV -r 0 -u $UVPos[0] -v $UVPos[1] $UV;
+	}
+}
+
+
+//UV color per shell
+global proc froToolsColorsUV()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		//only one object
+		select -r $sel[0];
+		polyColorPerVertex -r 0.5 -g 0.5 -b 0.5 -a 1;
+		
+		//get the shells
+		string $Shells[] = froToolsCollectShells();
+		
+		//loop on every shell
+		for ($s = 0; $s < `size $Shells`; $s++)
+		{
+			//select the shell
+			string $Single_Shell[];
+			tokenize $Shells[$s] "," $Single_Shell;
+			select -r $Single_Shell;
+			
+			//convert selection to face and apply a random color
+			PolySelectConvert 1; //to Face
+			polyColorPerVertex -r (`rand 0.2 1`) -g (`rand 0.2 1`) -b (`rand 0.2 1`) -a 1 -cdo;
+		}
+		
+		//now export the vertex colors to a texture map
+		select -r $sel[0];
+
+		//object mode
+		froToolsChangeSelMode(0);
+	}
+}
+
+
+global proc froToolsSeperateShellsAndExport()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0 && `textField -q -fi froTools_EXPORTpath` != "")
+	{
+		string $group = `group -empty`;
+		
+		//only one object
+		select -r $sel[0];
+		string $saved = $sel[0];
+		string $mesh[] = `duplicate $sel[0]`;
+		string $tempSel[]; //temp selection
+		
+		
+		//get the shells
+		string $Shells[] = froToolsCollectShells();
+		
+		//loop on every shell
+		for ($s = 0; $s < `size $Shells`; $s++)
+		{
+			//select the shell
+			string $Single_Shell[];
+			tokenize $Shells[$s] "," $Single_Shell;
+			select -r $Single_Shell;
+			
+			//convert selection to face and apply a random color
+			PolySelectConvert 1; //to Face
+			froToolsSeparateFace(); //break to a new mesh for avoiding vtx color blending
+			
+			//group
+			froToolsChangeSelMode(0);
+			$tempSel = `ls -sl`;
+			if($tempSel[0] != "")
+				parent $tempSel[0] $group;
+		}
+		
+		//combine shell in one mesh
+		select -r $group;
+		select -hi; //select all the objetc under the group
+		select -d $group; //unselect the group
+		select -add $mesh[0];
+		polyPerformAction polyUnite o 0;
+		froToolsChangeSelMode(0); 
+		
+		$sel = `ls -sl`;
+		
+		DeleteHistory;
+/*
+		if(`objExists $mesh[0]`)
+			delete $mesh[0];
+		*/
+			
+		if($sel[0] != $group)
+		{
+			select -r $sel[0];
+			rename $sel[0] $mesh[0];
+			
+			if(`objExists $group`)
+				delete $group;
+			
+			select -r $mesh[0];
+
+		//EXPORT
+			string $file = `textField -q -fi froTools_EXPORTpath` + $saved;
+			int $txtsize = `intField -q -v froTools_UVShellSize`;
+		
+			//switch to paint tool
+			PaintVertexColorTool;
+			
+			//export the map
+			artAttrCtx -e -exportfilemode "rgba" `currentCtx`;
+			artAttrCtx -e -exportfilesizex $txtsize `currentCtx`;
+			artAttrCtx -e -exportfilesizey $txtsize `currentCtx`;
+			artAttrCtx -e -exportfiletype "JPEG" `currentCtx`;
+			
+			artAttrCtx -e -exportfilesave $file `currentCtx`;
+			print("Exported map : " + $file + ".jpg" + "\n");
+			
+			//D:\\DROPBOX\\Dropbox\\EXIL\\Asset\\Character\\Lena\\export\\
+			//D:\DROPBOX\Dropbox\EXIL\Asset\Character\Lena\export\
+			
+			
+		//FINISH
+			//set to move tool (translate)
+			setToolTo moveSuperContext;
+			delete $mesh[0];
+			select -r $saved;
+			froToolsChangeSelMode(0);
+		}
+		else
+			error "Incorrect procedure, cancelled";
+	}
+}
+
+
+global proc froToolsResetUVShellColors()
+{
+	string $sel[] = `ls -sl`;
+	
+	if(size($sel) != 0)
+	{
+		//apply grey color disable now the display of vertex color
+		select -r $sel[0];
+		polyColorPerVertex -r 0.5 -g 0.5 -b 0.5 -a 1;
+		polyOptions -colorShadedDisplay false; //disable vtx colors
+
+		//object mode
+		froToolsChangeSelMode(0);
+	}
+}
+
+
+global proc string[] froToolsCollectShells()
+{
+	PolySelectConvert 4; //to UV
+	
+	$Selection =`ls -sl -fl`;
+	string $UVs[] = `ls -sl -fl`;//base uv's
+	string $Test_UVs[] = `ls -sl -fl` ;
+	string $Shell[];
+	string $Shell_string;
+	string $Shell_array[];
+	
+	for ($s = 0; $s < `size $UVs`; $s++)
+	{
+		$test_UV = stringArrayContains ($UVs[$s], $Test_UVs);// checks to see if the UV is in the array after removing shell
+		
+		if ($test_UV == 1)
+		{
+			select -r $UVs[$s];
+			SelectUVShell ;
+			string $Shell[] = `ls -sl -fl`;//flattens uv selection
+			string $Shell_string = stringArrayToString ($Shell,",");//converts array to string
+			$new_UVs = stringArrayRemove ($Shell, $Test_UVs);//removes shells from base uvs
+			$Test_UVs = $new_UVs;//updates UV array to remove shell
+			stringArrayInsertAtIndex(0 , $Shell_array, $Shell_string);
+		} //end if
+		
+	} //end for
+	
+	return $Shell_array;//returns an array of strings that needs to be tokenized thru a for loop
+}
+
+//UV Scale
+global proc froToolsScaleUV(float $input)
+{
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else
+	{
+		// To tweak the u and v values of selected uvs:
+		polyEditUV -pivotU 0.5 -pivotV 0.5 -relative 1 -su $input -sv $input ;
+	}
+	
+	print("\n");
+}
+
+//UV Move
+global proc froToolsMoveUV(float $uu, float $vv)
+{
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else if ($uu == 0 && $vv == 0) //no movmeent = center
+	{
+		polyNormalizeUV -normalizeType 1 -preserveAspectRatio on ;
+		PolySelectConvert 4;
+	}
+	else
+	{
+		$uu = $uu * `floatField -q -v froTools_uvmoverange`; //Multiply direction by step lenght
+		$vv = $vv * `floatField -q -v froTools_uvmoverange`;
+		polyEditUVShell -relative true -uValue $uu -vValue $vv ;
+	}
+	
+	print("\n");
+}
+
+//UV Rotate
+global proc froToolsRotateUV(float $input)
+{
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else if ($input != 0)
+	{
+		polyRotateUVs (-$input); //CCW so we need to invert the angle input to get CW direction
+	}
+	
+	select $sel;
+	print("\n");
+}
+
+//Custom UV Rotate
+global proc froToolsRotateUVcustom()
+{
+	float $input = `floatField -q -v angle_custom`;
+	froToolsRotateUV($input);
+}
+
+//Corner UV
+global proc froToolsCornerUV(float $input)
+{
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else
+	{
+		polyEditUV -pivotU 0.5 -pivotV 0.5 -relative 1 -scaleU 0.5 -scaleV 0.5; //scale uv before moving to corner
+		
+		if($input == 1) //top left
+			polyEditUVShell -pivotU 0.5 -pivotV 0.5 -relative true -uValue -0.25 -vValue 0.25;
+		else if($input == 2) //top right
+			polyEditUVShell -pivotU 0.5 -pivotV 0.5 -relative true -uValue 0.25 -vValue 0.25;
+		else if($input == 3) //down right
+			polyEditUVShell -pivotU 0.5 -pivotV 0.5 -relative true -uValue 0.25 -vValue -0.25;
+		else if($input == 0) //down left
+			polyEditUVShell -pivotU 0.5 -pivotV 0.5 -relative true -uValue -0.25 -vValue -0.25;
+	}
+	
+	print("\n");
+}
+
+
+global proc froToolsSnapshot()
+{
+	int $snapSize = `intField -q -v froToolsSnapSize`; //query snapshot size
+	string $basicFilter = "*.tga";
+	string $savePath[] = `fileDialog2 -cap "Filename to save..." -fm 0 -fileFilter $basicFilter`;
+	
+	if( $savePath[0] != "")
+	{
+		//$savePath[0] = $savePath[0] + ".tga";
+		
+		//convert color
+		float $tempColor[] = `button -q -bgc colorPickerUV`;
+		int $convertColor[];
+		$convertColor[0] = $tempColor[0] * 255;
+		$convertColor[1] = $tempColor[1] * 255;
+		$convertColor[2] = $tempColor[2] * 255;
+
+		uvSnapshot 
+			-name $savePath[0] 
+			-uMin 0 -uMax 1 
+			//-antiAliased 
+			-fileFormat "tga" 
+			-xr $snapSize 
+			-yr $snapSize
+			-overwrite
+			-r $convertColor[0] -g $convertColor[1] -b $convertColor[2];
+		
+		
+		//display path
+		string $temp = "Snapshot saved to = " + $savePath[0];
+		print($temp);
+	}
+	else
+	{
+		warning("Wrong filename specified | Cancelled");
+	}
+}
+
+global proc froToolsSnapshotColor()
+{
+	//query the current color
+	float $wireColor[] = `button -q -bgc colorPickerUV`;
+	
+	//query the new color
+	colorEditor;
+	if (`colorEditor -query -result`) {
+		float $values[];
+		$values = `colorEditor -query -rgb`;
+		print ("RGB = " + $values[0] + " " + $values[1] + " " + $values[2] + "\n");
+
+		//update
+		$wirecolor[0] = $values[0];
+		$wirecolor[1] = $values[1];
+		$wirecolor[2] = $values[2];
+		button -e -bgc $wirecolor[0] $wirecolor[1] $wirecolor[2] colorPickerUV;
+	} else 
+	{
+		print ("color editor was dismissed\n");
+	}
+}
+
+//custom scale ratio
+global proc froToolsToggleRatio()
+{
+	int $state = `checkBox -query -value ratioCheckbox`;
+	if ($state == 0)
+	
+		floatField -edit -v (`floatField -q -value scaleValueV`) -en 1 scaleValueV; 
+	else 
+		floatField -edit -en 0 -v (`floatField -q -value scaleValueU`) scaleValueV;
+}
+
+//apply UV Scale with custom ratio
+global proc froToolsCustomScaleUV()
+{
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else
+	{
+		int $state = `checkBox -query -value ratioCheckbox`;
+		if ($state == 0)
+		{
+			// To tweak the u and v values of selected uvs:
+			polyEditUV 
+				-pivotU 0.5 -pivotV 0.5 
+				-relative 1 
+				-su (`floatField -q -value scaleValueU`) 
+				-sv (`floatField -q -value scaleValueV`);
+		}
+		else
+		{
+			polyEditUV 
+				-pivotU 0.5 -pivotV 0.5 
+				-relative 1 
+				-su (`floatField -q -value scaleValueU`) 
+				-sv (`floatField -q -value scaleValueU`);
+		}
+	}
+}
+
+
+//apply UV Scale with custom ratio
+global proc froToolsCustomScaleUVfixed()
+{
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else
+	{
+		polyEditUV 
+			-pivotU 0.5 -pivotV 0.5 
+			-relative 1 
+			-su (`floatField -q -value scaleUVvalue`) 
+			-sv (`floatField -q -value scaleUVvalue`);
+	}
+	
+	select $sel[0];
+}
+
+//UV Move
+global proc froToolsMoveUVcenter(int $input)
+{
+	string $sel[] = `ls -sl -l`;
+	if($input) ConvertSelectionToUVs;
+	
+	if( size($sel) == 0)
+		print("No UV selected");
+	else //no movmeent = center
+	{
+		polyNormalizeUV -normalizeType 1 -preserveAspectRatio on ;
+		PolySelectConvert 4;
+	}
+	
+	//back to object mode
+	// froToolsChangeSelMode(0);
+	if(!$input) select -r $sel;	
+	
+	//Using this print to avoid the message :
+	//"Warning: Some items cannot be moved in the 3D view."
+	print("\n"); 
+}
+
+
+
+global proc froToolsMatchUV()
+{
+	string $selObj[] =`ls -sl -fl`;
+	if (size($selObj) == 0)
+	{
+		print "Please select the UV point";
+	}
+	else
+	{
+		string $buffer[];
+		string $meshName[] = `ls -sl -fl`;
+		string $numTokens = `tokenize $meshName[0] "." $buffer`;
+		int $noOfUVVerts[] = `polyEvaluate -uvcoord`;
+		int $noOfSelUVVerts[] = `polyEvaluate -uvComponent`;
+		string $selUVs[] =`ls -sl -fl`;
+		float $TolUnits= `floatField -q -v match_size`;
+		for ($i = 0 ; $i < $noOfSelUVVerts[0] ; $i++)
+		{
+			float $SelUvPos[] = `polyEditUV -query $selUVs[$i]`;
+			for ($j = 0 ; $j < $noOfUVVerts[0] ; $j++)
+			{
+				string $MeshText = $buffer[0] + ".map[" + $j + "]";
+				float $AllUvPos[] = `polyEditUV -query $MeshText`;
+				if ($AllUvPos[0]< ($SelUvPos[0] + $TolUnits) && $AllUvPos[0]> ($SelUvPos[0] - $TolUnits))
+				{
+					if ($AllUvPos[1]< ($SelUvPos[1] + $TolUnits) && $AllUvPos[1]> ($SelUvPos[1] - $TolUnits))
+					{
+						polyEditUV -relative false -uValue $AllUvPos[0] -vValue $AllUvPos[1] $selUVs[$i];
+					}
+				}
+			}
+		}
+	}
+}
+
+global proc froToolsMatchUVrange(int $input)
+{
+	float $temp = `floatField -q -v match_size`;
+	
+	if( $input == 1 )
+	{
+		$temp += 0.01;
+		if($temp > 10.0) $temp = 10.0;
+		floatField -e -v $temp match_size;
+	}
+	else
+	{
+		$temp -= 0.01;
+		if($temp < 0.01) $temp = 0.01;
+		floatField -e -v $temp match_size;
+	}
+}
+
+
+global proc froToolsRandom(string $UorV)
+{
+	float $random;
+	
+	string $aObj[] = `ls -sl`;
+
+	SelectTool; // avoiding "cant move in 3d view" warning
+	
+	for ($obj in $aObj)
+	{
+		if (`floatField -query -value froTools_randomUVrange` == 0.0)
+		{
+			$random = rand (1); 
+			$random = (`PositiveNegative` + $random);
+		}
+		else
+		{
+			$random = (`PositiveNegative` + `floatField -query -value froTools_randomUVrange`);
+		}
+		
+		select $obj;
+		
+		PolySelectConvert 4;
+		polyEditUV $UorV $random;
+	}
+	
+	select $aObj;
+	
+	MoveTool; // avoiding "cant move in 3d view" warning
+}
+
+global proc froToolsRandomU()
+{
+	froToolsRandom ("-uValue");
+}
+
+global proc froToolsRandomV()
+{
+	froToolsRandom ("-vValue");
+}
+
+
+global proc string PositiveNegative()
+{
+	string $positiveNegative = "";
+	int $posNeg = `rand 2`;
+
+	if ($posNeg == 0)
+	{
+		$positiveNegative = "-";
+	}
+	
+	return $positiveNegative;
+}
+
+global proc froToolsBestProjection()
+{
+	if(size(`filterExpand -sm 34`) != 0)
+	{	
+		polyProjection 
+			-ch 1 //construction history
+			-type Planar
+			-ibd on
+			-md b; //map direction, b = bestPlane
+			
+		setToolTo ShowManips;
+	}
+}
+
+global proc froToolsBestOrthoProjection()
+{
+	if(size(`filterExpand -sm 34`) != 0)
+	{
+		string $sel[] = `ls -sl -fl`;
+	
+		////////////////////////////////////////
+		//get camera vector
+			//Get the worldspace transform of the "persp" camera (returns an array of 16 values)
+		float $TM[] = `xform -q -ws -matrix "persp"`;
+
+			//From that transform matrix the components of the Z rotation vector will be indexes 8, 9 and 10
+		float $vecZ[] = {$TM[8], $TM[9], $TM[10]};
+
+			//Since cameras in Maya face -Z you will want the inverse of that vector
+		float $camF[3] = {-$vecZ[0], -$vecZ[1], -$vecZ[2]};
+		
+		
+		////////////////////////////////////////
+		float $X[3] = { 1, 0, 0 };
+		float $Y[3] = { 0, 1, 0 };
+		float $Z[3] = { 0, 0, 1 };
+		
+		float $r[3] = { 0, 0, 0};
+		
+		$r[0] = abs(dotProduct($camF, $X, 1));
+		$r[1] = abs(dotProduct($camF, $Y, 1));
+		$r[2] = abs(dotProduct($camF, $Z, 1));
+		
+		//count and find the highest (which equal the most parallel axis)
+		int $n = size($r); 
+		int $max = 0;
+		
+		for($i = 0; $i < 3; $i++)
+		{
+			if( $r[$i] > $r[$max] )
+				$max = $i;
+		}
+		
+		if($max == 0)
+		{
+			polyProjection -ch 1 -type Planar -ibd on -md x; 
+			print "Projected in X\n";
+		}
+		else if($max == 1)
+		{
+			polyProjection -ch 1 -type Planar -ibd on -md y; 
+			print "Projected in Y\n";
+		}
+		else
+		{
+			polyProjection -ch 1 -type Planar -ibd on -md z; 
+			print "Projected in Z\n";
+		}			
+		
+		setToolTo ShowManips;
+		// select $sel;
+		
+	}
+}
