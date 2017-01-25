@@ -2,7 +2,7 @@
 
 Current version : **3.2.5**
 
-The froTools is a toolset for **Autodesk Maya** to speed up your modeling workflow. This game content oriented script allow you a quicker access to the common tools that you use in Maya when you do polygonal modeling. It also provide a lot of new tools to make some task more easy to perform.
+The ***froTools*** is a toolset for **Autodesk Maya** to speed up your modeling workflow. This game content oriented script allow you a quicker access to the common tools that you use in Maya when you do polygonal modeling. It also provide a lot of new tools to make some task more easy to perform.
 
 This script also provide : 
  * A quick exporter for the FBX and OBJ format
@@ -11,8 +11,8 @@ This script also provide :
 
 
 # How to Install ?
-Put the content of the folder "froTools" inside your "My Documents/Maya" folder.
-Ex : "My Documents\maya\2011-x64\"
+Put the content of the folder "froTools" inside your "My Documents/Maya" folder. **Example** : "My Documents\maya\2011-x64\"
+
 This script has been tested and works properly with :
  * Maya 2011
  * Maya 2012
@@ -33,4 +33,5 @@ eval("froTools3");
 # Documentation
 
 Documentation can be found on the following page :
+
 http://www.froyok.fr/blog/2012-12-frotools-3-2-new-enhanced-ui-and-tools
