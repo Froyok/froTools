@@ -62,6 +62,7 @@ For additional contacts and requests you can reach out via my website or Twitter
 
 # Changelog
 
+## 3.3
  * Added support for Maya 2015/2016/2017 (fixed bugs and broken functions)
  * Added Edge Outline/Border selection from selected faces
  * Added a mesh analyzer (polycount, mesh size, and so on)
