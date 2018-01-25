@@ -20,6 +20,15 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//froTools 3.3.1
+-Added new hotkey "CTRL+A" and "CTRL+SHIFT+A" to cycle between existing docked widgets/windows
+-Updated FBX export settings to disable Tangent/Binormals by default (UE4 friendly)
+-Updated UV window "Move UVs" step field to allow more precise values
+-Updated UV window with new "Move UVs" quick step buttons
+-Updated UV window with new quick ratio scale buttons
+-Updated UV set exporter to not move meshes anymore
+-Fixed UV set exporter channel name being ignored
+-Fixed some compatibility issues with Maya 2018
 
 //froTools 3.3
 -Added support for Maya 2015/2016/2017 (fixed bugs and broken functions)
@@ -149,7 +158,7 @@ global proc froTools3()
 	float $mayaVersion = `getApplicationVersionAsFloat`;
 	float $mayaVersionRequired = 2011.0;
 
-    if( $mayaVersion < $mayaVersionRequired )
+	if( $mayaVersion < $mayaVersionRequired )
 	{
 		error("This script requires at least Maya " + $mayaVersionRequired);
 	}
@@ -190,7 +199,7 @@ global proc froTools3()
 	//window settigns
 	//--------------------------------------------------------------
 	string	$defaultDockArea	= "right";	// "top", "left", "bottom", "right";
-			$frotitle			= "froTools 3.3.0 Beta";
+			$frotitle			= "froTools 3.3.1";
 	string 	$dock				= "dockfroTools";
 	int 	$winw 				= 202 + 16;
 
@@ -198,8 +207,11 @@ global proc froTools3()
 		deleteUI -control $dock;
 
 	//init maya functions
+	if( $mayaVersion < 2014.0 )
+	{
 		source PolySelectConvert; //init the PolySelectConvert command
 		buildPreferenceMenu mainOptionsMenu; //init the Hide UI button
+	}
 
 
 	//make the base window
@@ -1074,11 +1086,22 @@ global proc froTools3()
 						-command "froToolsSnapVertexToGrid";
 
 					//line4
-					shelfButton
-						-style "iconOnly"
-						-image1 "subdivCreate.xpm"
-						-annotation "Convert smooth preview to polygon"
-						-command "CreatePolyFromPreview";
+					if( $mayaVersion < 2016.0 )
+					{
+						shelfButton
+							-style "iconOnly"
+							-image1 "subdivCreate.xpm"
+							-annotation "Convert smooth preview to polygon"
+							-command "CreatePolyFromPreview";
+					}
+					else
+					{
+						shelfButton
+							-style "iconOnly"
+							-image1 "meshToPolygons.png"
+							-annotation "Convert smooth preview to polygon"
+							-command "CreatePolyFromPreview";
+					}
 
 					shelfButton
 						-style "iconOnly"
@@ -1474,7 +1497,7 @@ global proc froTools3()
 				gridLayout -numberOfColumns 2 -cellHeight 20 -cellWidth ($winw / 2);
 					checkBox -l "Smoothing Grp" -v 1 	froTools_checkFBXsmoothgrp;
 					checkBox -l "Split Normals" -v 0 	froTools_checkFBXsplit;
-					checkBox -l "Tang/Binormals" -v 1 	froTools_checkFBXbinormal;
+					checkBox -l "Tang/Binormals" -v 0 	froTools_checkFBXbinormal;
 					checkBox -l "Smooth Msh" -v 0 		froTools_checkFBXsmoothmsh;
 					checkBox -l "Selection Sets" -v 0 	froTools_checkFBXsels;
 					checkBox -l "Convert to Null" -v 0 	froTools_checkFBXnull;
@@ -1674,6 +1697,11 @@ global proc froTools3()
 					button
 						-l "ALT+f"
 						-c "froToolsSetupHotKeys flip";
+
+					text -l "Cycle docked window";
+					button
+						-l "CTRL+a"
+						-c "froToolsSetupHotKeys cycle";
 				setParent ..;
 
 		gridLayout -numberOfColumns 1 -cellHeight 4 -cellWidth ($winw );
@@ -1842,7 +1870,11 @@ global proc froToolsTextureWindow()
 
 	//make the base window
 	window -t $titleUV -width $winw -minimizeButton 1 -maximizeButton 1 -toolbox 0 froWindowUV;
-	$pane = `paneLayout -paneSize 1 $pnSize 1 -cn "vertical2" -swp 1 -aft 1 -st 1 froWindowUVpanel`;
+
+	$pane = "froWindowUVpanel";
+	
+	int $PanelSize = int( $pnSize );
+	paneLayout -paneSize 1 $PanelSize 1 -cn "vertical2" -swp 1 -st 1 $pane;
 
 	//build left ui
 	columnLayout uv_col_main;
@@ -1901,10 +1933,25 @@ global proc froToolsTextureWindow()
 
 		gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw);
 			gridLayout -numberOfColumns 2 -cellHeight 18 -cellWidth ($winw / 1.5);
-				floatField -pre 4 -v 1 -min 0.01 -max 10 froTools_uvmoverange;
+				floatField -pre 6 -v 1 -min 0.01 -max 10 froTools_uvmoverange;
 				gridLayout -numberOfColumns 1 -cellHeight 18 -cellWidth ($winw / 3);
-					text -l " < Dist" -align "left";
+					text -l "< Step" -align "left";
 				setParent ..;
+			setParent ..;
+
+			gridLayout -numberOfColumns 3 -cellHeight 18 -cellWidth ($winw / 3);
+				button
+					-l "1"
+					-c "froToolsResetOffset"
+					-bgc 0.22 1.0 0.75;
+				button
+					-l "x0.5"
+					-c "froToolsChangeOffset 1"
+					-bgc 0.22 1.0 0.75;
+				button
+					-l "x2.0"
+					-c "froToolsChangeOffset 0"
+					-bgc 0.22 1.0 0.75;
 			setParent ..;
 		setParent ..;
 
@@ -2131,6 +2178,8 @@ global proc froToolsTextureWindow()
 		gridLayout -numberOfColumns 2 -cellHeight 18 -cellWidth ($winw / 2);
 			checkBox -l "Ratio" -v 1 -cc "froToolsToggleRatio" ratioCheckbox;
 			button -bgc 0.91 0.94 1 -l "Scale" -c "froToolsCustomScaleUV" applyScale;
+			button -l "Scale 1:2" -c "froToolsSetRatioValue 1" -bgc 0.8 0.8 0.8;
+			button -l "Scale 2:1" -c "froToolsSetRatioValue 2" -bgc 0.8 0.8 0.8;
 		setParent ..;
 
 		gridLayout -numberOfColumns 1 -cellHeight 6 -cellWidth ($winw );
@@ -2979,6 +3028,65 @@ global proc froToolsSetupHotKeys(string $hotkey)
 	}
 
 	////////////////////////////////////////////////////////////////
+	if($hotkey == "cycle")
+	{
+		if (!`runTimeCommand -exists froCycleKey`)
+		{
+			runTimeCommand
+				-annotation "Cycle docked window"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsCycleDock(\"up\");")
+				froCycleKey;
+		}
+		else
+		{
+			runTimeCommand -edit
+				-annotation "Cycle docked window"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsCycleDock(\"up\");")
+				froCycleKey;
+		}
+
+		nameCommand
+			-annotation "froCycleKeyCommand"
+			-sourceType "mel"
+			-command ("froCycleKey")
+			froCycleKeyCommand;
+
+		hotkey -keyShortcut "a" -ctl -name ("froCycleKeyCommand");
+
+
+		if (!`runTimeCommand -exists froCycleKey2`)
+		{
+			runTimeCommand
+				-annotation "Cycle docked window"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsCycleDock(\"down\");")
+				froCycleKey2;
+		}
+		else
+		{
+			runTimeCommand -edit
+				-annotation "Cycle docked window"
+				-category "User"
+				-commandLanguage "mel"
+				-command ("froToolsCycleDock(\"down\");")
+				froCycleKey2;
+		}
+
+		nameCommand
+			-annotation "froCycleKeyCommand2"
+			-sourceType "mel"
+			-command ("froCycleKey2")
+			froCycleKeyCommand2;
+
+		hotkey -keyShortcut "A" -ctl -name ("froCycleKeyCommand2");
+	}
+
+	////////////////////////////////////////////////////////////////
 	print("Hotkeys " + $hotkey + " ready.");
 }
 
@@ -2995,6 +3103,79 @@ global proc froTools_createShelfButton()
 		-command "source froTools3.mel; froTools3"; //no need to make a new button, automatically update
 }
 
+
+
+global proc froToolsCycleDock( string $Direction )
+{
+	global int $froCurrentDockIndex;
+
+	string $FinalList[] = {	"channelBox",
+							"attributeEditor"
+						};
+
+	string $DockList[] = `lsUI -type "dockControl"`;
+
+
+	//------------------------------------------
+	//Check if docks exists, if so, add them to the final update list
+	//------------------------------------------
+	int $i = 0;
+	for( $i = 0; $i < size( $DockList ); $i++ )
+	{
+		string $CurrentDock = $DockList[$i];
+
+		//Discard Maya generated control (only list user/froyok docks)
+		//Also ignore existing docks that are obscrured (closed window)
+		if( !gmatch( $CurrentDock, "dockControl*" ) && !`dockControl -q -isObscured $CurrentDock` )
+		{
+			$FinalList[ size( $FinalList ) ] = $CurrentDock;
+		}
+	}
+
+	//------------------------------------------
+	//Update and clamp
+	//------------------------------------------
+	if( $Direction == "up" )
+	{
+		$froCurrentDockIndex += 1;
+	}
+	else
+	{
+		$froCurrentDockIndex -= 1;
+	}
+
+
+	if( $froCurrentDockIndex > size( $FinalList ) - 1  )
+	{
+		$froCurrentDockIndex = 0;
+	}
+	else if( $froCurrentDockIndex < 0 )
+	{
+		$froCurrentDockIndex = size( $FinalList ) - 1;
+	}
+
+
+	//------------------------------------------
+	//Call functions
+	//------------------------------------------
+	string $DockToRaise = $FinalList[ $froCurrentDockIndex ];
+
+	if( $DockToRaise == "channelBox" )
+	{
+		setChannelBoxVisible(1);
+		raiseChannelBox;
+	}
+	else if( $DockToRaise == "attributeEditor" )
+	{
+		openAEWindow;
+	}
+	else
+	{
+		evalDeferred("dockControl -e -raise " + $DockToRaise);
+	}
+	
+	print( "Raised " + $DockToRaise + "\n" );
+}
 
 
 
@@ -6001,114 +6182,151 @@ global proc froToolsExportOBJ()
 
 global proc froToolsExportOBJuv()
 {
-	// load ObjExport plugin if nessacary...
+	//-----------------------------------------------
+	//Check if OBJ exporter is loaded
+	//-----------------------------------------------
 	if (!`pluginInfo -query -l objExport`)
 	{
-		loadPlugin objExport;
-		pluginInfo -edit -autoload true objExport;
+		error "OBJ plugin is not loaded";
 	}
 
+	//-----------------------------------------------
+	//Check if export path is valid
+	//-----------------------------------------------
+	string $ExportPath = `textField -q -fi froTools_EXPORTpath`;
+
+	if( !`filetest -e $ExportPath` )
+	{
+		error( "Export path is empty" );
+	}
+
+
+	//-----------------------------------------------
+	//Query lightmap channel name
+	//-----------------------------------------------
+	string $Lightmap = "";
+
+	if( `textField -q -fi froTools_OBJUVname` != "" )
+		$Lightmap = `textField -q -fi froTools_OBJUVname`;
+	else
+		error "No UVset name defined for export";
+
+
+	//-----------------------------------------------
+	//Process meshes
+	//-----------------------------------------------
 	string $sel[] = `ls -sl`;
 
 	for($obj in $sel)
 	{
-		//query lightmap channel name
-		string $lightmap;
-		if(`textField -q -fi froTools_OBJUVname` != "")
-			$lightmap = `textField -q -fi froTools_OBJUVname`;
-		else
-			$lightmap = "lightmap";
+		//-------------------------------------------
+		//Check if UVset exists
+		//-------------------------------------------
+		int 	$uvok 		= 0;
+		int 	$indices[] 	= `polyUVSet -q -allUVSetsIndices $obj`;
 
-
-		//select and duplicate the mesh
-		string $orimesh = $obj;
-
-		//query if there is a lightmap channel
-		int $uvok = 0;
-		int $indices[] = `polyUVSet -q -allUVSetsIndices $orimesh`;
 		for( $i in $indices )
 		{
-				string $name = `getAttr ($orimesh+".uvSet["+$i+"].uvSetName")`;
-				if($name == "lightmap")
-					$uvok = 1;
+			string $name = `getAttr ( $obj + ".uvSet["+ $i + "].uvSetName" )`;
+
+			if( $name == $Lightmap )
+			{
+				$uvok = 1;
+			}
 		}
+		
 
-		if($uvok)
+		//-------------------------------------------
+		//If UV set exist, we export it
+		//-------------------------------------------
+		if( $uvok )
 		{
-			select -r $orimesh;
-			polyUVSet -currentUVSet -uvSet "lightmap";
+			select -r $obj;
+			polyUVSet -currentUVSet -uvSet $Lightmap;
 
-			//duplicate mesh
-			string $duplimesh_temp[] = `duplicate $orimesh`;
-			string $duplimesh = $duplimesh_temp[0];
-			rename $duplimesh ($orimesh + "_lightmap");
-			$duplimesh = ($orimesh + "_lightmap");
-			string $uvsetend;
+			//-------------------------------------------
+			//Duplicate mesh
+			//-------------------------------------------
+			string $duplimesh = $obj + "_lightmap";
+			duplicate -name $duplimesh $obj;
 
-			//select the set the current UV the dafualt one (map1)
+
+			//-------------------------------------------
+			//Remove all UV sets except the first one
+			//-------------------------------------------
+			string 	$UvSetTarget 	= "";
+			int 	$Indices[] 		= `polyUVSet -q -allUVSetsIndices $duplimesh`;
+
 			select -r $duplimesh;
-			$indices = `polyUVSet -q -allUVSetsIndices $duplimesh`;
-			for( $i in $indices )
-			{
-					string $name = `getAttr ($duplimesh+".uvSet["+$i+"].uvSetName")`;
-					if($i = 0)
-						$uvsetend = $name;
-			}
-			polyUVSet -delete -uvSet $lightmap;
 
-			//select and transfert the UVs
-			select -r $orimesh;
+			int $i = 0;
+			for($i = 0; $i < size( $Indices ); $i++ )
+			{
+				string $name = `getAttr ($duplimesh + ".uvSet[" + $i + "].uvSetName" )`;
+
+				if( $i == 0 )
+				{
+					$UvSetTarget = $name;
+				}
+				else
+				{
+					polyUVSet -delete -uvSet $name;
+				}
+			}
+
+
+			//--------------------------------------------
+			//Transfert the UVs
+			//--------------------------------------------
+			select -r $obj;
 			select -add $duplimesh;
+
 			transferAttributes
-				-transferPositions 0 -transferNormals 0
-				-transferUVs 1 -sourceUvSet $lightmap
-				-targetUvSet $uvsetend
-				-transferColors 0 -sampleSpace 5
-				-sourceUvSpace $lightmap -targetUvSpace $uvsetend
-				-searchMethod 3-flipUVs 0
-				-colorBorders 1 ;
+				-transferPositions 0 
+				-transferNormals 0
+				-transferUVs 1
+				-transferColors 0
+				-sampleSpace 5
+				-searchMethod 3
+				-flipUVs 0
+				-colorBorders 1
+				-sourceUvSet $Lightmap
+				-targetUvSet $UvSetTarget
+				-sourceUvSpace $Lightmap
+				-targetUvSpace $UvSetTarget;
 
-			//center pivot and move to ori
-			//needed because if the mesh is too far away, the simple ambiant
-			//occlusion generator of xnormal will crash and render a blank map
-			select -r $duplimesh; //we only move the lightmap mesh
-			froToolsCenterPivots();
-			move -rpr 0 0 0;
 
-			//export
-			if(`textField -q -fi froTools_EXPORTpath` != "")
-			{
-				string $objItem = $duplimesh;
-				string $objFolder = `textField -q -fi froTools_EXPORTpath`;
+			//--------------------------------------------
+			//Export mesh
+			//--------------------------------------------
+			select -r $duplimesh;
+			string $ExportFullPath = $ExportPath + "/" + $obj + ".obj";
 
-				sysFile -md $objFolder;
+			file -op "groups=0;ptgroups=0;materials=0;smoothing=0;normals=1"
+				-f //force
+				-chn 1 //channels
+				-sh 0 //shaders
+				-exp 0 //expressions
+				-con 0 //constraint
+				-ch 0 //construction history
+				-typ "OBJexport"
+				-pr //preserve reference
+				-es //export selected
+				$ExportFullPath;
 
-				select -cl;
+			print( "Exported : " + $obj + ".obj");
 
-				select -r $objItem;
-				string $objOutname = ($objFolder + "/" + $objItem + ".obj");
-				$objOutname = substituteAllString($objOutname, "|", "");
 
-				file -op "groups=0;ptgroups=0;materials=0;smoothing=0;normals=1"
-					-f //force
-					-chn 1 //channels
-					-sh 0 //shaders
-					-exp 0 //expressions
-					-con 0 //constraint
-					-ch 0 //construction history
-					-typ "OBJexport"
-					-pr //preserve reference
-					-es //export selected
-					$objOutname;
-
-				print( "Exported : " + $objItem + ".obj");
-			}
-
-			//clear the scene, we don't need the mehs anymore
+			//--------------------------------------------
+			//Cleanup
+			//--------------------------------------------
 			delete $duplimesh;
-
-		} //if uvok end
-	} //for end
+		}
+		else
+		{
+			error( "No UVset named \"" + $Lightmap + "\" found in mesh \"" + $obj + "\"" );
+		}
+	}
 }
 
 
@@ -6211,7 +6429,6 @@ global proc froExport(string $ext)
 		$combined = true;
 		$CombinedName = `textField -q -fi froTools_OBJname`;
 	}
-
 
 
 	string $ExportGroup = "froExportGroup";
@@ -6767,6 +6984,32 @@ global proc froToolsSnapUVToGrid()
 }
 
 
+
+global proc froToolsResetOffset()
+{
+	floatField -e -v 1.0 froTools_uvmoverange;
+}
+
+
+
+global proc froToolsChangeOffset( int $Type )
+{
+	float $OffsetValue = `floatField -q -v froTools_uvmoverange`;
+
+	if( $Type )
+	{
+		$OffsetValue = $OffsetValue * 0.5;
+	}
+	else
+	{
+		$OffsetValue = $OffsetValue * 2.0;
+	}
+
+	floatField -e -v $OffsetValue froTools_uvmoverange;
+}
+
+
+
 //UV color per shell
 global proc froToolsColorsUV()
 {
@@ -6947,6 +7190,8 @@ global proc string[] froToolsCollectShells()
 	return $Shell_array;//returns an array of strings that needs to be tokenized thru a for loop
 }
 
+
+
 //UV Scale
 global proc froToolsScaleUV(float $input)
 {
@@ -6964,6 +7209,8 @@ global proc froToolsScaleUV(float $input)
 	print("\n");
 }
 
+
+
 //UV Move
 global proc froToolsMoveUV(float $uu, float $vv)
 {
@@ -6971,7 +7218,9 @@ global proc froToolsMoveUV(float $uu, float $vv)
 	ConvertSelectionToUVs;
 
 	if( size($sel) == 0)
+	{
 		print("No UV selected");
+	}
 	else if ($uu == 0 && $vv == 0) //no movmeent = center
 	{
 		polyNormalizeUV -normalizeType 1 -preserveAspectRatio on ;
@@ -6987,6 +7236,8 @@ global proc froToolsMoveUV(float $uu, float $vv)
 	print("\n");
 }
 
+
+
 //UV Rotate
 global proc froToolsRotateUV(float $input)
 {
@@ -6994,15 +7245,29 @@ global proc froToolsRotateUV(float $input)
 	ConvertSelectionToUVs;
 
 	if( size($sel) == 0)
+	{
 		print("No UV selected");
+	}
 	else if ($input != 0)
 	{
-		polyRotateUVs (-$input); //CCW so we need to invert the angle input to get CW direction
+		float $mayaVersion = `getApplicationVersionAsFloat`;
+		
+		//CCW so we need to invert the angle input to get CW direction
+		if( $mayaVersion >= 2018.0 )
+		{
+			eval("polyRotateUVs -" + $input + " 0" );
+		}
+		else
+		{
+			eval("polyRotateUVs -" + $input );
+		}
 	}
 
 	select $sel;
 	print("\n");
 }
+
+
 
 //Custom UV Rotate
 global proc froToolsRotateUVcustom()
@@ -7010,6 +7275,8 @@ global proc froToolsRotateUVcustom()
 	float $input = `floatField -q -v angle_custom`;
 	froToolsRotateUV($input);
 }
+
+
 
 //Corner UV
 global proc froToolsCornerUV(float $input)
@@ -7102,8 +7369,8 @@ global proc froToolsSnapshotColor()
 global proc froToolsToggleRatio()
 {
 	int $state = `checkBox -query -value ratioCheckbox`;
-	if ($state == 0)
 
+	if ($state == 0)
 		floatField -edit -v (`floatField -q -value scaleValueV`) -en 1 scaleValueV;
 	else
 		floatField -edit -en 0 -v (`floatField -q -value scaleValueU`) scaleValueV;
@@ -7139,6 +7406,41 @@ global proc froToolsCustomScaleUV()
 		}
 	}
 }
+
+
+global proc froToolsSetRatioValue( int $type )
+{
+	float $Uvalue = 0.5;
+	float $Vvalue = 0.5;
+	
+	if( $type == 1 )
+	{
+		$Uvalue = 1.0;
+	}
+	else
+	{
+		$Vvalue = 1.0;
+	}
+
+
+	string $sel[] = `ls -sl -l`;
+	ConvertSelectionToUVs;
+
+	if( size($sel) == 0 )
+	{
+		print("No UV selected");
+	}
+	else
+	{
+		// To tweak the u and v values of selected uvs:
+		polyEditUV
+			-pivotU 0.5 -pivotV 0.5
+			-relative 1
+			-su $Uvalue
+			-sv $Vvalue;
+	}
+}
+
 
 
 //apply UV Scale with custom ratio
@@ -7742,12 +8044,9 @@ global proc froMeshDataSelection()
 global proc string froMeshDataSize( string $Mesh )
 {
 	/*
-	0 = xmin
-	1 = xmax
-	2 = ymin
-	3 = ymax
-	4 = zmin
-	5 = zmax
+	0 = xmin	1 = xmax
+	2 = ymin	3 = ymax
+	4 = zmin	5 = zmax
 	*/
 	float $BoundingSize[] = `exactWorldBoundingBox $Mesh`;
 
