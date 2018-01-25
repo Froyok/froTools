@@ -29,13 +29,12 @@ This script also provide :
 Put the content of the folder "froTools" inside your "My Documents/Maya" folder. **Example** : "My Documents\maya\2011-x64\"
 
 This script has been tested and works properly with :
- * Maya 2011
- * Maya 2012
  * Maya 2013
  * Maya 2014
  * Maya 2015
  * Maya 2016
  * Maya 2017
+ * Maya 2018
 
 # How to Launch ?
 Call the command below in the mel command line for the first time. You can use the “Make Shelf Button” to make a shelf button in your current shelf.
@@ -62,6 +61,15 @@ For additional contacts and requests you can reach out via my website or Twitter
 
 # Changelog
 
+## 3.3.1
+ * Added new hotkey "CTRL+A" and "CTRL+SHIFT+A" to cycle between existing docked widgets/windows
+ * Updated FBX export settings to disable Tangent/Binormals by default (UE4 friendly)
+ * Updated UV window "Move UVs" step field to allow more precise values
+ * Updated UV window with new "Move UVs" quick step buttons
+ * Updated UV window with new quick ratio scale buttons
+ * Updated UV set exporter to not move meshes anymore
+ * Fixed UV set exporter channel name being ignored
+ * Fixed some compatibility issues with Maya 2018
 ## 3.3
  * Added support for Maya 2015/2016/2017 (fixed bugs and broken functions)
  * Added Edge Outline/Border selection from selected faces
