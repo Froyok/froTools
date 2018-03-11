@@ -61,6 +61,11 @@ For additional contacts and requests you can reach out via my website or Twitter
 
 # Changelog
 
+## 3.3.3
+ * Fixed Attribute editor being ignored when using "CTRL+A"
+## 3.3.2
+ * Updated the "CTRL+A" shortcut to cycle and raise only hidden docks
+ * Fixed UV rotation functions not working properly (including in Maya 2018)
 ## 3.3.1
  * Added new hotkey "CTRL+A" and "CTRL+SHIFT+A" to cycle between existing docked widgets/windows
  * Updated FBX export settings to disable Tangent/Binormals by default (UE4 friendly)
