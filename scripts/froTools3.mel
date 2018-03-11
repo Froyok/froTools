@@ -20,6 +20,10 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//froTools 3.3.2
+-Updated the "CTRL+A" shortcut to cycle and raise only hidden docks
+-Fixed UV rotation functions not working properly (including in Maya 2018)
+
 //froTools 3.3.1
 -Added new hotkey "CTRL+A" and "CTRL+SHIFT+A" to cycle between existing docked widgets/windows
 -Updated FBX export settings to disable Tangent/Binormals by default (UE4 friendly)
@@ -3108,50 +3112,86 @@ global proc froTools_createShelfButton()
 global proc froToolsCycleDock( string $Direction )
 {
 	global int $froCurrentDockIndex;
+	string $FinalList[] = {};
 
-	string $FinalList[] = {	"channelBox",
-							"attributeEditor"
-						};
-
-	string $DockList[] = `lsUI -type "dockControl"`;
-
+	//------------------------------------------
+	//Add attribute editor/channelbox if they are not visible
+	//------------------------------------------
+	if( !`isUIComponentVisible("Channel Box")`
+	&& !`isUIComponentVisible("Layer Editor")`
+	&& !`isUIComponentVisible("Channel Box / Layer Editor")` )
+	{
+		print( "Channel Box\n" );
+		setChannelBoxVisible(1);
+		raiseChannelBox;
+		return;
+	}
+	
+	/*
+	if( !`isUIComponentVisible("Attribute Editor")` )
+	{
+		print( "Attribute Editor\n" );
+		openAEWindow;
+		return;
+	}
+	*/
 
 	//------------------------------------------
 	//Check if docks exists, if so, add them to the final update list
 	//------------------------------------------
+	string $DockList[] = `lsUI -type "dockControl"`;
+
 	int $i = 0;
 	for( $i = 0; $i < size( $DockList ); $i++ )
 	{
 		string $CurrentDock = $DockList[$i];
 
-		//Discard Maya generated control (only list user/froyok docks)
-		//Also ignore existing docks that are obscrured (closed window)
-		if( !gmatch( $CurrentDock, "dockControl*" ) && !`dockControl -q -isObscured $CurrentDock` )
+		//Ignore existing docks that are obscured (closed window)
+		//Ignore as well floating dock
+		if( !`dockControl -q -isObscured $CurrentDock`
+		&& !`dockControl -q -floating $CurrentDock` )
 		{
 			$FinalList[ size( $FinalList ) ] = $CurrentDock;
 		}
 	}
 
+	if( size( $FinalList ) == 0 )
+	{
+		return;
+	}
+
+
 	//------------------------------------------
 	//Update and clamp
 	//------------------------------------------
-	if( $Direction == "up" )
+	int $Counter = 100;
+	while( $Counter )
 	{
-		$froCurrentDockIndex += 1;
-	}
-	else
-	{
-		$froCurrentDockIndex -= 1;
-	}
+		if( $Direction == "up" )
+		{
+			$froCurrentDockIndex += 1;
+		}
+		else
+		{
+			$froCurrentDockIndex -= 1;
+		}
 
+		//Clamp/Loop index
+		if( $froCurrentDockIndex > size( $FinalList ) - 1  )
+		{
+			$froCurrentDockIndex = 0;
+		}
+		else if( $froCurrentDockIndex < 0 )
+		{
+			$froCurrentDockIndex = size( $FinalList ) - 1;
+		}
 
-	if( $froCurrentDockIndex > size( $FinalList ) - 1  )
-	{
-		$froCurrentDockIndex = 0;
-	}
-	else if( $froCurrentDockIndex < 0 )
-	{
-		$froCurrentDockIndex = size( $FinalList ) - 1;
+		//If new Index is a valid stop here, if not we try again try again
+		if( !`dockControl -q -raise $FinalList[ $froCurrentDockIndex ]` )
+			break;
+		
+		//Safety
+		$Counter = $Counter - 1;
 	}
 
 
@@ -3160,21 +3200,7 @@ global proc froToolsCycleDock( string $Direction )
 	//------------------------------------------
 	string $DockToRaise = $FinalList[ $froCurrentDockIndex ];
 
-	if( $DockToRaise == "channelBox" )
-	{
-		setChannelBoxVisible(1);
-		raiseChannelBox;
-	}
-	else if( $DockToRaise == "attributeEditor" )
-	{
-		openAEWindow;
-	}
-	else
-	{
-		evalDeferred("dockControl -e -raise " + $DockToRaise);
-	}
-	
-	print( "Raised " + $DockToRaise + "\n" );
+	evalDeferred("dockControl -e -raise " + $DockToRaise);
 }
 
 
@@ -7252,14 +7278,16 @@ global proc froToolsRotateUV(float $input)
 	{
 		float $mayaVersion = `getApplicationVersionAsFloat`;
 		
+		string $Value = string( $input );
+
 		//CCW so we need to invert the angle input to get CW direction
 		if( $mayaVersion >= 2018.0 )
 		{
-			eval("polyRotateUVs -" + $input + " 0" );
+			eval("polyRotateUVs " + $Value + " 0" );
 		}
 		else
 		{
-			eval("polyRotateUVs -" + $input );
+			eval("polyRotateUVs " + $Value );
 		}
 	}
 
