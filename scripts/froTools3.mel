@@ -20,6 +20,9 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//froTools 3.3.3
+-Fixed Attribute editor being ignored when using "CTRL+A"
+
 //froTools 3.3.2
 -Updated the "CTRL+A" shortcut to cycle and raise only hidden docks
 -Fixed UV rotation functions not working properly (including in Maya 2018)
@@ -203,7 +206,7 @@ global proc froTools3()
 	//window settigns
 	//--------------------------------------------------------------
 	string	$defaultDockArea	= "right";	// "top", "left", "bottom", "right";
-			$frotitle			= "froTools 3.3.1";
+			$frotitle			= "froTools 3.3.3";
 	string 	$dock				= "dockfroTools";
 	int 	$winw 				= 202 + 16;
 
@@ -3126,15 +3129,14 @@ global proc froToolsCycleDock( string $Direction )
 		raiseChannelBox;
 		return;
 	}
-	
-	/*
+
 	if( !`isUIComponentVisible("Attribute Editor")` )
 	{
 		print( "Attribute Editor\n" );
 		openAEWindow;
 		return;
 	}
-	*/
+
 
 	//------------------------------------------
 	//Check if docks exists, if so, add them to the final update list
